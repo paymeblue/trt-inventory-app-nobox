@@ -9,6 +9,7 @@ Supervision, Logistics and QC).
 
 | Area | Covers |
 |---|---|
+| **App Flow** | All 17 process flows from the workbook as data — 158 stages. Each has a swimlane flow chart and the full stage table (action by, steps, documents, decision maker, criteria, duration). Start a run of any flow and work its stages as a live checklist with assignees, due dates, notes and an audit trail. |
 | **Companies** | TRT with Nobox under it. Stock is owned by whoever owns the location it sits in, so the switcher in the top bar scopes the dashboard, catalogue, stock, alerts and ledger to one company — or shows the whole group. |
 | **Catalogue** | Every board, edge tape, accessory and consumable — photo, spec, colour, shelf reference, unit cost, reorder level. Grid or table view, searchable and filterable. Photos upload by drag-and-drop and are stored in Postgres. |
 | **Excel import** | Upload an existing stock sheet (.xlsx / .xls / .csv). Header rows are found even under a merged title, columns are auto-mapped, and opening quantities post into a store you choose as auditable movements. |
@@ -56,6 +57,7 @@ Open http://localhost:3000.
 | `npm run db:seed` | Demo locations, users, materials, projects and movements |
 | `npm run db:reset` | **Drops the public schema.** Follow with `db:migrate` |
 | `npm run db:user -- <email> <password> "<name>" [ROLE] [LOCATION]` | Create or update one account. Bootstraps the first administrator on a fresh database, and resets a password when nobody can sign in to do it in the UI. |
+| `npm run db:flows` | Load the process flows from `scripts/flow-data.ts`. Safe to re-run; runs in progress are untouched. |
 | `npm run db:images` | Render a material photo for any seeded material that has none. Run automatically by `db:seed`. |
 
 ## Accounts
@@ -121,10 +123,13 @@ Change all of these before the system is used for real work — with
 scripts/
   sql/001_init.sql       schema
   sql/002_companies.sql  group companies
+  sql/003_process_flows.sql  process flows and runs
   migrate.ts seed.ts     database tooling
   create-user.ts         make or reset one account
   png.ts textures.ts     material photo generation
   seed-images.ts
+  flow-data.ts           the 17 flows extracted from the workbook
+  seed-flows.ts
 src/
   app/
     (app)/               authenticated pages, each a server page + client view
