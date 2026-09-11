@@ -155,6 +155,24 @@ ledger and the balances cannot drift apart.
 
 ## Deploying
 
-Works on Vercel as-is. Set `DATABASE_URL` and `JWT_SECRET` in the project's
-environment variables, then run `npm run db:migrate` against the production
+The app is fully dynamic — API routes, middleware and server-rendered pages — so
+it needs a Node runtime, not static hosting.
+
+Nothing connects to the database during a build; the pool is created on the
+first query. A build therefore needs no environment variables, but the site will
+not work at runtime until these are set:
+
+| Variable | Value |
+|---|---|
+| `DATABASE_URL` | The Neon connection string, including `?sslmode=require` |
+| `JWT_SECRET` | `openssl rand -hex 32` |
+
+Then run `npm run db:migrate` (and optionally `db:seed`) against the production
 database once.
+
+**Netlify** — `netlify.toml` is committed and sets the build command, Node 20 and
+`@netlify/plugin-nextjs`, which provides the server runtime. Add the two
+variables above under *Site configuration → Environment variables* and redeploy.
+Do not set a publish directory by hand; the plugin manages it.
+
+**Vercel** — works as-is; set the same two variables.

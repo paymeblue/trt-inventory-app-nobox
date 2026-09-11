@@ -7,7 +7,12 @@ declare global {
 
 function createPool() {
   const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error("DATABASE_URL is not set");
+  if (!connectionString) {
+    throw new Error(
+      "DATABASE_URL is not set. Add it to .env.local locally, or to the environment " +
+        "variables of your hosting provider.",
+    );
+  }
   return new Pool({
     connectionString,
     ssl: { rejectUnauthorized: false },
@@ -17,14 +22,24 @@ function createPool() {
   });
 }
 
-export const pool: Pool = global.__trtPool ?? createPool();
-if (process.env.NODE_ENV !== "production") global.__trtPool = pool;
+/**
+ * The pool is created on first use rather than at import time. Next.js imports
+ * every route module while collecting page data during a build, and build
+ * machines do not necessarily have DATABASE_URL — connecting eagerly would fail
+ * the build rather than the request.
+ */
+function getPool(): Pool {
+  if (!global.__trtPool) {
+    global.__trtPool = createPool();
+  }
+  return global.__trtPool;
+}
 
 export async function query<T extends QueryResultRow = QueryResultRow>(
   text: string,
   params: unknown[] = [],
 ): Promise<T[]> {
-  const res = await pool.query<T>(text, params as never[]);
+  const res = await getPool().query<T>(text, params as never[]);
   return res.rows;
 }
 
@@ -38,7 +53,7 @@ export async function queryOne<T extends QueryResultRow = QueryResultRow>(
 
 /** Runs `fn` inside a single transaction, rolling back on any throw. */
 export async function transaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
+  const client = await getPool().connect();
   try {
     await client.query("BEGIN");
     const result = await fn(client);

@@ -1,0 +1,17 @@
+# Netlify build for a dynamic Next.js app (App Router, API routes, middleware).
+# The Next.js runtime plugin handles server rendering and routing; do not set
+# `publish` by hand, the plugin manages it.
+
+[build]
+  command = "npm run build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  # The build machine has no database. The app only connects when a request
+  # arrives, so a build never needs these — but the site will not work at
+  # runtime until DATABASE_URL and JWT_SECRET are set in the Netlify UI under
+  # Site configuration -> Environment variables.
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

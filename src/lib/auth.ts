@@ -13,7 +13,12 @@ export type SessionPayload = {
 
 function secret() {
   const value = process.env.JWT_SECRET;
-  if (!value) throw new Error("JWT_SECRET is not set");
+  if (!value) {
+    throw new Error(
+      "JWT_SECRET is not set. Generate one with `openssl rand -hex 32` and add it to " +
+        "your environment variables.",
+    );
+  }
   return new TextEncoder().encode(value);
 }
 
