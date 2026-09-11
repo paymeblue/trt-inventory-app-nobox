@@ -1,17 +1,20 @@
 # Netlify build for a dynamic Next.js app (App Router, API routes, middleware).
-# The Next.js runtime plugin handles server rendering and routing; do not set
-# `publish` by hand, the plugin manages it.
+# The Next.js runtime plugin provides the server runtime; do not set `publish`
+# by hand, the plugin manages it.
 
 [build]
   command = "npm run build"
 
 [build.environment]
   NODE_VERSION = "20"
-  # The build machine has no database. The app only connects when a request
-  # arrives, so a build never needs these — but the site will not work at
-  # runtime until DATABASE_URL and JWT_SECRET are set in the Netlify UI under
-  # Site configuration -> Environment variables.
   NEXT_TELEMETRY_DISABLED = "1"
+  # "Collecting build traces" is the most memory-hungry phase of next build and
+  # is where this build was dying. Node's default heap is smaller than the
+  # builder's available memory, so give it room.
+  NODE_OPTIONS = "--max-old-space-size=4096"
+  # Netlify skips devDependencies when NODE_ENV=production, which would remove
+  # typescript, tailwind and the type packages that the build needs.
+  NPM_FLAGS = "--include=dev"
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"

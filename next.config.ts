@@ -5,6 +5,16 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: "10mb" },
   },
   eslint: { ignoreDuringBuilds: true },
+  // Database tooling, the workbook extract and the sample spreadsheet are
+  // build-time only. Keeping them out of the trace makes the serverless
+  // bundles smaller and the trace step cheaper.
+  outputFileTracingExcludes: {
+    "*": [
+      "./scripts/**",
+      "./samples/**",
+      "./node_modules/.cache/**",
+    ],
+  },
 };
 
 export default nextConfig;
