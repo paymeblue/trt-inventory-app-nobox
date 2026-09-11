@@ -4,8 +4,10 @@ import { SESSION_COOKIE } from "@/lib/auth";
 /**
  * Cheap cookie-presence gate so unauthenticated users never render the shell.
  * The signature itself is verified server-side in `getSession()`.
+ *
+ * Next 16 renamed the middleware convention to `proxy`.
  */
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const hasCookie = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
   const { pathname, search } = req.nextUrl;
 

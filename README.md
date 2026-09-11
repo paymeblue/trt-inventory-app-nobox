@@ -101,7 +101,7 @@ Change all of these before the system is used for real work — with
 
 ## How it is built
 
-- **Next.js 15** (App Router) and **React 19**, TypeScript throughout.
+- **Next.js 16** (App Router) and **React 19**, TypeScript throughout.
 - **Tailwind CSS v4** with a token-based theme in `src/app/globals.css`.
 - **Postgres** through `pg` — plain SQL, no ORM. Schema in `scripts/sql/`.
 - **JWT auth**: `jose`-signed token in an httpOnly cookie, `bcryptjs` password
