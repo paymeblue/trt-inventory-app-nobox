@@ -1,9 +1,13 @@
 # Netlify build for a dynamic Next.js app (App Router, API routes, middleware).
-# The Next.js runtime plugin provides the server runtime; do not set `publish`
-# by hand, the plugin manages it.
+# The Next.js runtime plugin provides the server runtime.
 
 [build]
   command = "npm run build"
+  # Must be ".next", not the repository root. The plugin refuses to run when the
+  # publish directory equals the base directory, which is what happens if the
+  # Netlify UI has publish left blank or set to "/". Settings here take
+  # precedence over the UI, so this pins it correctly for every deploy.
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20"
