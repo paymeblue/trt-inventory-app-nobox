@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  Boxes, ClipboardList, Download, History, PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal,
+  Ban, Boxes, ClipboardList, Download, History, PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal,
   Tags, Trash2, TriangleAlert, Truck, Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -20,7 +20,6 @@ import { ItemFilters, useFilters } from "@/components/items/filters";
 import { useItems, type Item } from "@/components/items/use-items";
 import { ReorderBadge } from "@/components/forms/form-parts";
 import { StockAdditionForm, StockAdjustmentForm, StockIssueForm } from "@/components/forms/stock-forms";
-import { useReservationAlerts } from "@/components/reservations/use-reservation-alerts";
 import { ItemForm } from "./item-form";
 import { CategoriesModal } from "./categories-modal";
 import { TEMPLATE_URL, UploadModal } from "./upload-modal";
@@ -81,7 +80,6 @@ export function ManageView({ source }: { source: Source }) {
     apiFetch<{ total: number }>(`/api/reservations?status=OPEN&source=${source}&pageSize=1`).then((d) => setWaiting(d.total)).catch(() => undefined);
     apiFetch<{ items: Activity[] }>(`/api/items/activity?source=${source}`).then((d) => setActivity(d.items)).catch(() => undefined);
   }, [syncedAt, source]);
-  useReservationAlerts(syncedAt, source);
 
   const refresh = () => void reload(true);
   const done = () => {
@@ -167,6 +165,7 @@ export function ManageView({ source }: { source: Source }) {
                   <Th align="right" className="hidden xl:table-cell">Added</Th>
                   <Th align="right" className="hidden md:table-cell">Reserved</Th>
                   <Th align="right" className="hidden xl:table-cell">Issued</Th>
+                  <Th align="right" className="hidden lg:table-cell">Bad</Th>
                   <Th align="right">In stock</Th>
                   <Th align="right">Available</Th>
                   <Th align="center" className="hidden sm:table-cell">Reorder_Status</Th>
@@ -188,12 +187,14 @@ export function ManageView({ source }: { source: Source }) {
                     <Td align="right" className="tabular hidden text-[12.5px] text-fg-muted xl:table-cell">{item.added ? qty(item.added) : "—"}</Td>
                     <Td align="right" className="tabular hidden text-[12.5px] text-warn md:table-cell">{item.reserved ? qty(item.reserved) : "—"}</Td>
                     <Td align="right" className="tabular hidden text-[12.5px] text-fg-muted xl:table-cell">{item.issued ? qty(item.issued) : "—"}</Td>
+                    <Td align="right" className="tabular hidden text-[12.5px] text-danger lg:table-cell">{item.bad_qty ? qty(item.bad_qty) : "—"}</Td>
                     <Td align="right" className="tabular text-[13px]">{qty(item.quantity)}</Td>
                     <Td align="right" className={cn("tabular text-[13.5px] font-semibold", item.available < 0 && "text-danger")}>{qty(item.available)}</Td>
                     <Td align="center" className="hidden sm:table-cell"><ReorderBadge status={item.reorder_status} /></Td>
                     <Td align="right">
                       <div className="flex items-center justify-end gap-0.5">
                         <IconButton label={`Stock Addition for ${item.sku}`} onClick={() => setForm({ kind: "addition", item })}><PackagePlus className="h-3.5 w-3.5" /></IconButton>
+                        <IconButton label={`Move ${item.sku} to bad stock`} onClick={() => setForm({ kind: "adjustment", item, type: "Move to Bad Stock" })} danger><Ban className="h-3.5 w-3.5" /></IconButton>
                         <IconButton label={`Stock Adjustment for ${item.sku}`} onClick={() => setForm({ kind: "adjustment", item })}><SlidersHorizontal className="h-3.5 w-3.5" /></IconButton>
                         <IconButton label={`Edit ${item.sku}`} onClick={() => setEditing(item)}><Pencil className="h-3.5 w-3.5" /></IconButton>
                         <IconButton label={`Delete ${item.sku}`} onClick={() => setDeleting(item)} danger><Trash2 className="h-3.5 w-3.5" /></IconButton>

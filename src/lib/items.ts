@@ -41,7 +41,7 @@ export const ITEM_COLUMNS = `
   i.id, i.source, i.sku, i.name, i.category, i.subcategory, i.spec, i.dimensions, i.colour, i.unit,
   i.opening_qty::float8 AS opening_qty,
   i.quantity::float8 AS quantity, i.reorder_level::float8 AS reorder_level,
-  i.reorder_quantity::float8 AS reorder_quantity,
+  i.reorder_quantity::float8 AS reorder_quantity, i.bad_qty::float8 AS bad_qty,
   (${RESERVED_SQL})::float8 AS reserved,
   (${AVAILABLE_SQL})::float8 AS available,
   (${ISSUED_SQL})::float8 AS issued,

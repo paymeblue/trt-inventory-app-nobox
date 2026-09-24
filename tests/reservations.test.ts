@@ -189,6 +189,34 @@ describe("Stock adjustment form", () => {
   });
 });
 
+describe("Bad stock", () => {
+  const bad = async () => (await pool.query("SELECT bad_qty::float8 AS b FROM items WHERE id = $1", [itemId])).rows[0].b;
+  const withReason = (type: string, quantity: number, notes: string | undefined) =>
+    inTransaction(pool, (c) => adjustStock(c, { itemId, type, quantity, notes }, manager));
+
+  test("moving to bad stock needs a reason, takes it out of usable stock and keeps it on record", async () => {
+    await assert.rejects(withReason("Move to Bad Stock", 3, ""), /Give a reason for the Move to Bad Stock/);
+    await withReason("Move to Bad Stock", 3, "Chipped edges");
+    assert.equal(await bad(), 3);
+    assert.deepEqual(await item(), { quantity: 7, reserved: 0, available: 7, issued: 0, added: 0, status: "OK" });
+    const { rows } = await pool.query("SELECT notes, bad_impact::float8 AS b, stock_impact::float8 AS s FROM stock_adjustments");
+    assert.deepEqual(rows, [{ notes: "Chipped edges", b: 3, s: -3 }]);
+  });
+
+  test("restoring from bad stock brings it back, never more than is there", async () => {
+    await withReason("Move to Bad Stock", 3, "Water damage");
+    await assert.rejects(withReason("Restore from Bad Stock", 4, "repaired"), /Only 3 Sheet of LISSA OAK 18MM are in bad stock/);
+    await withReason("Restore from Bad Stock", 2, "repaired");
+    assert.equal(await bad(), 1);
+    assert.equal((await item()).quantity, 9);
+  });
+
+  test("write-offs and count losses also need a reason", async () => {
+    await assert.rejects(withReason("Damage / Write-off", 1, undefined), /Give a reason/);
+    await assert.rejects(withReason("Count Loss", 1, " "), /Give a reason/);
+  });
+});
+
 describe("Reorder_Status", () => {
   const statusAt = async (available: number) => {
     await pool.query("UPDATE items SET quantity = $1, reorder_level = 4 WHERE id = $2", [available, itemId]);

@@ -18,7 +18,6 @@ import { useRequiredSession } from "@/components/session-context";
 import { useLiveVersion } from "@/components/items/use-items";
 import { ReserveModal, type Reservation } from "@/components/reservations/reserve-modal";
 import { ReserveUploadModal } from "@/components/reservations/reserve-upload-modal";
-import { useReservationAlerts } from "@/components/reservations/use-reservation-alerts";
 import { StockIssueForm } from "@/components/forms/stock-forms";
 import { apiFetch, toQuery } from "@/lib/client";
 import { canManage, type Source } from "@/lib/rbac";
@@ -77,7 +76,6 @@ export function ReservationsView() {
   React.useEffect(() => setPage(1), [status, source, term, mine]);
 
   const liveAt = useLiveVersion(React.useCallback(() => void load().catch(() => undefined), [load]));
-  useReservationAlerts(syncedAt, home || undefined);
 
   const waiting = (data?.counts ?? [])
     .filter((c) => (c.status === "RESERVED" || c.status === "PART_ISSUED") && (!source || c.source === source))

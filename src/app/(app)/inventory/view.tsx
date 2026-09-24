@@ -2,11 +2,11 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Bookmark, FileSpreadsheet, LayoutGrid, List as ListIcon, LogIn, PackageSearch } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Bookmark, LayoutGrid, List as ListIcon, PackageSearch } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
-import { Button, buttonClass } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
+import { buttonClass } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty";
 import { Pagination } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
@@ -16,18 +16,10 @@ import { ReorderBadge } from "@/components/forms/form-parts";
 import { ItemFilters, useFilters } from "@/components/items/filters";
 import { ItemDetail } from "@/components/items/item-detail";
 import { useItems, type Item } from "@/components/items/use-items";
-import { useDeductionAlerts } from "@/components/items/use-deduction-alerts";
-import { ReserveModal } from "@/components/reservations/reserve-modal";
-import { ReserveUploadModal } from "@/components/reservations/reserve-upload-modal";
-import { useReservationAlerts } from "@/components/reservations/use-reservation-alerts";
-import { signInHref, useSession } from "@/components/session-context";
-import { apiFetch } from "@/lib/client";
 import { cn, qty, relativeTime } from "@/lib/utils";
 
 const PAGE_SIZE = 48;
 
-/** A request to reserve, made while signed out, survives the trip through /login in the URL. */
-type Intent = { kind: "reserve"; item: Item | null } | { kind: "upload" };
 
 const TABS = [
   { value: "", label: "Everything" },
@@ -40,54 +32,14 @@ export function InventoryView() {
   const [view, setView] = React.useState<"grid" | "table">("grid");
   const [page, setPage] = React.useState(1);
   const [open, setOpen] = React.useState<Item | null>(null);
-  const [intent, setIntent] = React.useState<Intent | null>(null);
-  const [signIn, setSignIn] = React.useState<{ title: string; returnTo: string } | null>(null);
+
+
   const { filters, setFilters, params, active } = useFilters();
-  const session = useSession();
+  const router = useRouter();
 
   const { data, loading, error, syncedAt, liveAt, changed, reload } = useItems({ ...params, source, page, pageSize: PAGE_SIZE });
-  useDeductionAlerts(syncedAt);
-  useReservationAlerts(syncedAt);
 
-  // Coming back from /login: carry on with what the visitor was doing.
-  React.useEffect(() => {
-    if (!session) return;
-    const url = new URL(window.location.href);
-    const reserve = url.searchParams.get("reserve");
-    if (reserve === "new") {
-      url.searchParams.delete("reserve");
-      window.history.replaceState(null, "", url.pathname + url.search);
-      setIntent({ kind: "reserve", item: null });
-      return;
-    }
-    const upload = url.searchParams.get("upload");
-    if (!reserve && !upload) return;
-    url.searchParams.delete("reserve");
-    url.searchParams.delete("upload");
-    window.history.replaceState(null, "", url.pathname + url.search);
-    if (upload) setIntent({ kind: "upload" });
-    if (reserve) {
-      apiFetch<Item>(`/api/items/${reserve}`)
-        .then((item) => setIntent({ kind: "reserve", item }))
-        .catch(() => undefined);
-    }
-  }, [session]);
-
-  function reserve(item: Item) {
-    setOpen(null);
-    if (session) setIntent({ kind: "reserve", item });
-    else setSignIn({ title: `Sign in to reserve ${item.name}`, returnTo: `/inventory?reserve=${item.id}` });
-  }
-
-  function newReservation() {
-    if (session) setIntent({ kind: "reserve", item: null });
-    else setSignIn({ title: "Sign in to reserve", returnTo: "/inventory?reserve=new" });
-  }
-
-  function uploadReservations() {
-    if (session) setIntent({ kind: "upload" });
-    else setSignIn({ title: "Sign in to reserve from Excel", returnTo: "/inventory?upload=reservations" });
-  }
+  const reserve = (item: Item) => router.push(`/reserve?item=${item.id}`);
 
   React.useEffect(() => {
     setPage(1);
@@ -107,12 +59,9 @@ export function InventoryView() {
         action={
           <>
             <LiveIndicator syncedAt={liveAt} error={error} />
-            <Button variant="secondary" onClick={uploadReservations}>
-              <FileSpreadsheet className="h-4 w-4" /> Reserve from Excel
-            </Button>
-            <Button onClick={newReservation}>
-              <Bookmark className="h-4 w-4" /> New reservation
-            </Button>
+            <Link href="/reserve" className={buttonClass("primary", "md")}>
+              <Bookmark className="h-4 w-4" /> Reservation Form
+            </Link>
           </>
         }
       />
@@ -254,16 +203,6 @@ export function InventoryView() {
                       </div>
                       <ReorderBadge status={item.reorder_status} />
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        reserve(item);
-                      }}
-                      disabled={item.available <= 0}
-                      className={buttonClass("secondary", "sm", "mt-2.5 w-full")}
-                    >
-                      <Bookmark className="h-3.5 w-3.5" /> Reserve
-                    </button>
                   </div>
                 </div>
               </div>
@@ -339,46 +278,6 @@ export function InventoryView() {
         />
       ) : null}
 
-      {intent?.kind === "reserve" && session ? (
-        <ReserveModal
-          item={intent.item ? items.find((i) => i.id === intent.item!.id) ?? intent.item : null}
-          onClose={() => setIntent(null)}
-          onSaved={() => {
-            setIntent(null);
-            void reload(true);
-          }}
-        />
-      ) : null}
-
-      {intent?.kind === "upload" && session ? (
-        <ReserveUploadModal
-          onClose={() => setIntent(null)}
-          onApplied={() => {
-            setIntent(null);
-            void reload(true);
-          }}
-        />
-      ) : null}
-
-      {signIn ? (
-        <Modal
-          open
-          onClose={() => setSignIn(null)}
-          size="sm"
-          title={signIn.title}
-          description="Anyone can browse the inventory. Reserving needs your TRT Nobox account, so the factory knows who it is for."
-          footer={
-            <>
-              <Button variant="ghost" onClick={() => setSignIn(null)}>Not now</Button>
-              <Link href={signInHref(signIn.returnTo)} className={buttonClass("primary", "md")}>
-                <LogIn className="h-4 w-4" /> Sign in
-              </Link>
-            </>
-          }
-        >
-          <p className="text-[13px] text-fg-muted">You will come straight back here to finish.</p>
-        </Modal>
-      ) : null}
     </>
   );
 }

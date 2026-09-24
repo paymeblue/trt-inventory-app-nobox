@@ -39,7 +39,12 @@ export const ADJUSTMENT_TYPES = [
   "Damage / Write-off",
   "Count Gain",
   "Count Loss",
+  "Move to Bad Stock",
+  "Restore from Bad Stock",
 ] as const;
+
+/** Types that take stock away for a reason someone must be able to read later. */
+export const REASON_REQUIRED: readonly string[] = ["Move to Bad Stock", "Damage / Write-off", "Count Loss"];
 export type AdjustmentType = (typeof ADJUSTMENT_TYPES)[number];
 
 /**
@@ -54,7 +59,14 @@ export function adjustmentImpacts(type: AdjustmentType, q: number) {
     case "Damage / Write-off": return { stock: -q, reserved: 0, issued: 0 };
     case "Count Gain": return { stock: q, reserved: 0, issued: 0 };
     case "Count Loss": return { stock: -q, reserved: 0, issued: 0 };
+    case "Move to Bad Stock": return { stock: -q, reserved: 0, issued: 0 };
+    case "Restore from Bad Stock": return { stock: q, reserved: 0, issued: 0 };
   }
+}
+
+/** How the Bad stock bucket moves: in on a move to bad, out on a restore. */
+export function badChange(type: AdjustmentType, q: number) {
+  return type === "Move to Bad Stock" ? q : type === "Restore from Bad Stock" ? -q : 0;
 }
 
 /**
@@ -87,6 +99,9 @@ export async function adjustStock(
   if (quantity <= 0) throw new HttpError(400, "Quantity must be greater than zero.");
   const type = input.type;
   const relatedRef = input.relatedRef?.trim() || null;
+  if (REASON_REQUIRED.includes(type) && !input.notes?.trim()) {
+    throw new HttpError(400, `Give a reason for the ${type}.`);
+  }
 
   const item = await lockItem(client, input.itemId);
   const impacts = adjustmentImpacts(type, quantity);
@@ -112,7 +127,15 @@ export async function adjustStock(
           "Issue or release the reservations first.",
       );
     }
-    await client.query("UPDATE items SET quantity = $1, updated_by = $2, updated_at = now() WHERE id = $3", [next, who.id, item.id]);
+    const bad = badChange(type, quantity);
+    if (bad < 0) {
+      const { rows: b } = await client.query<{ bad: number }>("SELECT bad_qty::float8 AS bad FROM items WHERE id = $1", [item.id]);
+      if (-bad > b[0].bad) throw new HttpError(400, `Only ${b[0].bad} ${item.unit} of ${item.name} are in bad stock.`);
+    }
+    await client.query(
+      "UPDATE items SET quantity = $1, bad_qty = bad_qty + $2, updated_by = $3, updated_at = now() WHERE id = $4",
+      [next, bad, who.id, item.id],
+    );
     await recordMovement(client, {
       itemId: item.id, source: item.source, kind: "ADJUST", delta: change, balance: next,
       note: [type, relatedRef, input.notes].filter(Boolean).join(" · "), userId: who.id,
@@ -121,9 +144,9 @@ export async function adjustStock(
 
   const { rows } = await client.query<{ ref: string }>(
     `INSERT INTO stock_adjustments (item_id, source, adjustment_type, quantity, stock_impact, reserved_impact, issued_impact,
-                                    related_ref, reservation_id, notes, adjusted_by, adjusted_by_name)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING ref`,
-    [item.id, item.source, type, quantity, impacts.stock, impacts.reserved, impacts.issued,
+                                    bad_impact, related_ref, reservation_id, notes, adjusted_by, adjusted_by_name)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING ref`,
+    [item.id, item.source, type, quantity, impacts.stock, impacts.reserved, impacts.issued, badChange(type, quantity),
      relatedRef, reservationId, input.notes?.trim() || null, who.id, who.name],
   );
   return { ref: rows[0].ref, type, impacts, source: item.source };

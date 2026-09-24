@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 
 /** Anyone may browse /inventory. These always need someone signed in. */
-const PROTECTED = ["/reservations", "/logs", "/factory", "/nobox", "/users"];
+const PROTECTED = ["/reserve", "/reservations", "/logs", "/factory", "/nobox", "/users"];
 
 /**
  * Verifies the session token before a page renders. A stale or tampered cookie
@@ -18,7 +18,9 @@ export async function proxy(req: NextRequest) {
 
   let res: NextResponse;
   if (pathname === "/login" && session) {
-    res = NextResponse.redirect(new URL("/", req.url));
+    const next = req.nextUrl.searchParams.get("next") ?? "";
+    const safe = next.startsWith("/") && !next.startsWith("//") ? next : "/";
+    res = NextResponse.redirect(new URL(safe, req.url));
   } else if (!session && PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     const url = new URL("/login", req.url);
     url.searchParams.set("next", pathname + search);
@@ -36,6 +38,7 @@ export const config = {
     "/",
     "/login",
     "/inventory/:path*",
+    "/reserve/:path*",
     "/reservations/:path*",
     "/logs/:path*",
     "/factory/:path*",

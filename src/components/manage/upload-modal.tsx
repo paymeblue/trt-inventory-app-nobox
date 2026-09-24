@@ -77,7 +77,7 @@ export function UploadModal({ source, onClose, onApplied }: { source: Source; on
       onClose={onClose}
       size="xl"
       title={`Upload to ${SOURCE_LABELS[source]}`}
-      description="Quantities in the file are added to what is in stock. Negative numbers remove stock."
+      description="Inventory_Master rows. A new material starts with Quantity_Added as its Opening_Qty; on an existing one it is posted as a Stock Addition. To remove stock, use the Stock Adjustment form."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>

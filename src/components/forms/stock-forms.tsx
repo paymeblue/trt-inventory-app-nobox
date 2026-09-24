@@ -230,7 +230,11 @@ export const ADJUSTMENT_TYPES = [
   "Damage / Write-off",
   "Count Gain",
   "Count Loss",
+  "Move to Bad Stock",
+  "Restore from Bad Stock",
 ] as const;
+
+const REASON_REQUIRED = ["Move to Bad Stock", "Damage / Write-off", "Count Loss"];
 
 /** The workbook's Stock_Impact / Reserved_Impact / Issued_Impact formulas. */
 function impacts(type: string, q: number) {
@@ -241,6 +245,8 @@ function impacts(type: string, q: number) {
     case "Damage / Write-off": return [-q, 0, 0];
     case "Count Gain": return [q, 0, 0];
     case "Count Loss": return [-q, 0, 0];
+    case "Move to Bad Stock": return [-q, 0, 0];
+    case "Restore from Bad Stock": return [q, 0, 0];
     default: return [0, 0, 0];
   }
 }
@@ -275,12 +281,15 @@ export function StockAdjustmentForm({
   const [stock, reserved, issued] = impacts(type, quantity > 0 ? quantity : 0);
   const releasing = type === "Reservation Release";
   const release = releasing ? openRes.find((r) => r.ref === related) : null;
-  const status = !item || !type || amount.trim() === "" || (releasing && !related)
-    ? "Missing required fields"
+  const needsReason = REASON_REQUIRED.includes(type);
+  const status = !item || !type || amount.trim() === "" || (releasing && !related) || (needsReason && !notes.trim())
+    ? needsReason && !notes.trim() && item && type && amount.trim() ? `Give a reason for the ${type}` : "Missing required fields"
     : !(quantity > 0)
       ? "Quantity must be greater than zero"
       : releasing && release && quantity > release.balance
         ? `${release.ref} only has ${qty(release.balance)} left reserved`
+        : type === "Restore from Bad Stock" && quantity > item.bad_qty
+          ? `Only ${qty(item.bad_qty)} in bad stock`
         : stock < 0 && item.quantity + stock < item.reserved
           ? `Only ${qty(Math.max(0, item.quantity - item.reserved))} unreserved in stock`
           : null;
@@ -343,7 +352,10 @@ export function StockAdjustmentForm({
             <Input value={related} onChange={(e) => setRelated(e.target.value)} placeholder="REQ-… or ISS-…" className="code" />
           )}
         </Field>
-        <Field label="Reason / Notes"><Input value={notes} onChange={(e) => setNotes(e.target.value)} /></Field>
+        <Field label="Reason / Notes" hint={needsReason ? "required" : undefined}>
+          <Input name="reason" value={notes} onChange={(e) => setNotes(e.target.value)}
+            placeholder={type === "Move to Bad Stock" ? "Chipped edges, water damage, wrong colour from supplier…" : undefined} />
+        </Field>
         {item ? (
           <Lookup rows={[
             ["Material Code", <span key="c" className="code">{item.sku}</span>],
@@ -352,6 +364,7 @@ export function StockAdjustmentForm({
             ["Reserved Impact Signed", signed(reserved)],
             ["Issued Impact Signed", signed(issued)],
             ["In stock → after", `${n(item.quantity)} → ${n(item.quantity + stock)}`],
+            ["Bad stock → after", `${n(item.bad_qty)} → ${n(item.bad_qty + (type === "Move to Bad Stock" ? quantity || 0 : type === "Restore from Bad Stock" ? -(quantity || 0) : 0))}`],
           ]} />
         ) : null}
         <ErrorLine error={error} />

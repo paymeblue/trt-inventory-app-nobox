@@ -8,7 +8,7 @@ import { SOURCE_LABELS, type Source } from "@/lib/rbac";
 import { qty } from "@/lib/utils";
 
 type Event = {
-  id: string; action: "RESERVED" | "ISSUED" | "CANCELLED"; cursor: string; ref: string; source: Source;
+  id: string; action: "RESERVED" | "ISSUED" | "CANCELLED" | "RELEASED"; cursor: string; ref: string; source: Source;
   quantity: number; project: string; reserved_by: string | null; item_name: string; unit: string;
   by_name: string | null; created_by: string | null;
 };
@@ -46,8 +46,8 @@ export function useReservationAlerts(syncedAt: number | null, source?: Source) {
           toast(`${e.by_name ?? "Someone"} reserved ${what} (${SOURCE_LABELS[e.source]}) for ${e.project}.`, "info");
         } else if (e.reserved_by === me.sub && e.action === "ISSUED") {
           toast(`${e.ref} issued: ${what} for ${e.project} has left ${SOURCE_LABELS[e.source]}.`, "info");
-        } else if (e.reserved_by === me.sub && e.action === "CANCELLED") {
-          toast(`${e.ref} was released by ${e.by_name ?? "a manager"}: ${what} for ${e.project}.`, "info");
+        } else if (e.reserved_by === me.sub && (e.action === "RELEASED" || e.action === "CANCELLED")) {
+          toast(`${e.ref} was released by ${e.by_name ?? "the inventory team"}: ${what} for ${e.project} is no longer reserved.`, "info");
         }
       }
     };

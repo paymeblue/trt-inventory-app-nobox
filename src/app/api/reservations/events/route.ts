@@ -20,7 +20,7 @@ export const GET = handle(async (req: Request) => {
   }
   const items = await query(
     `SELECT e.id, e.action, e.note, e.created_at, to_json(e.created_at) #>> '{}' AS cursor,
-            r.id AS reservation_id, r.ref, r.source, r.quantity::float8 AS quantity, r.project,
+            r.id AS reservation_id, r.ref, r.source, COALESCE(e.quantity, r.quantity)::float8 AS quantity, r.project,
             r.reserved_by, i.name AS item_name, i.unit, u.full_name AS by_name, e.created_by
        FROM reservation_events e
        JOIN reservations r ON r.id = e.reservation_id

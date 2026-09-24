@@ -1,13 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 
 export function LoginForm() {
-  const router = useRouter();
   const params = useSearchParams();
   // Only same-site paths, so the link cannot bounce someone to another site.
   const requested = params.get("next") ?? "";
@@ -31,8 +30,9 @@ export function LoginForm() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error ?? "Sign in failed");
-      router.replace(next);
-      router.refresh();
+      // A full navigation, so the new session cookie is used for the page
+      // itself. (Refreshing /login instead would bounce to the home page.)
+      window.location.assign(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed");
       setBusy(false);

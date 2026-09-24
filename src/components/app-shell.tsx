@@ -3,11 +3,13 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, X, ChevronDown, LayoutGrid, Factory, Store, Users, ClipboardList, LogIn, ScrollText } from "lucide-react";
+import { LogOut, Menu, X, ChevronDown, LayoutGrid, Factory, Store, Users, ClipboardList, LogIn, ScrollText, Bookmark } from "lucide-react";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme";
 import { canManage, canManageUsers, homeFor, ROLE_LABELS, type Role } from "@/lib/rbac";
 import { SessionProvider, signInHref } from "./session-context";
+import { NotificationBell } from "./notification-bell";
+import { LiveAlerts } from "./live-alerts";
 import { cn, initials } from "@/lib/utils";
 
 type Session = { sub: string; name: string; email: string; role: Role };
@@ -21,6 +23,7 @@ type NavItem = {
 
 const NAV: NavItem[] = [
   { href: "/inventory", label: "Inventory", icon: LayoutGrid, allowed: () => true },
+  { href: "/reserve", label: "Reservation Form", icon: Bookmark, allowed: (r) => r === "DESIGNER" || r === "ADMIN" },
   { href: "/reservations", label: "Reservations", icon: ClipboardList, allowed: (r) => r !== null },
   { href: "/logs", label: "Logs", icon: ScrollText, allowed: (r) => r !== null },
   { href: "/factory", label: "Factory", icon: Factory, allowed: (r) => canManage(r, "FACTORY") },
@@ -161,6 +164,7 @@ export function AppShell({ session, children }: { session: Session | null; child
 
   return (
     <SessionProvider value={session}>
+    <LiveAlerts role={role} />
     <div className="min-h-dvh bg-bg">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col border-r border-border bg-bg-subtle lg:flex">
@@ -214,6 +218,7 @@ export function AppShell({ session, children }: { session: Session | null; child
           </Link>
 
           <div className="ml-auto flex items-center gap-2">
+            {session ? <NotificationBell /> : null}
             <ThemeToggle className="hidden sm:inline-flex" />
           </div>
         </header>

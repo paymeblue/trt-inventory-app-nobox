@@ -44,7 +44,9 @@ export function useOpenReservations(itemId: string | null, enabled = true) {
  * Reservation_Form. Designer Name and Email come from the signed-in account;
  * the lookups and Status Check mirror the workbook's.
  */
-export function ReserveModal({ item: initial, onClose, onSaved }: { item?: Item | null; onClose: () => void; onSaved: () => void }) {
+export function ReserveModal({
+  item: initial, onClose, onSaved, inline,
+}: { item?: Item | null; onClose: () => void; onSaved: () => void; inline?: boolean }) {
   const me = useRequiredSession();
   const toast = useToast();
   const [item, setItem] = React.useState<Item | null>(initial ?? null);
@@ -85,20 +87,13 @@ export function ReserveModal({ item: initial, onClose, onSaved }: { item?: Item 
     }
   }
 
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      size="lg"
-      title="Reservation Form"
-      description="Designers reserve stock here. The stock is set aside for your project and is taken out when the inventory team issues it."
-      footer={
-        <>
-          <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
-          <Button form="reserve-form" type="submit" loading={busy} disabled={status !== null}>Submit reservation</Button>
-        </>
-      }
-    >
+  const footer = (
+    <>
+      <Button variant="ghost" type="button" onClick={onClose}>{inline ? "Clear" : "Cancel"}</Button>
+      <Button form="reserve-form" type="submit" loading={busy} disabled={status !== null}>Submit reservation</Button>
+    </>
+  );
+  const content = (
       <form id="reserve-form" onSubmit={submit} className="space-y-3.5">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Designer Name"><Input value={me.name} disabled /></Field>
@@ -160,6 +155,26 @@ export function ReserveModal({ item: initial, onClose, onSaved }: { item?: Item 
         {error ? <p className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2.5 text-[13px] text-danger">{error}</p> : null}
         <StatusCheck message={status} />
       </form>
+  );
+
+  if (inline) {
+    return (
+      <div className="space-y-4">
+        {content}
+        <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">{footer}</div>
+      </div>
+    );
+  }
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      size="lg"
+      title="Reservation Form"
+      description="Designers reserve stock here. The stock is set aside for your project and is taken out when the inventory team issues it."
+      footer={footer}
+    >
+      {content}
     </Modal>
   );
 }

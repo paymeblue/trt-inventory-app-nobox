@@ -35,7 +35,7 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
           <Button onClick={onReserve} disabled={item.available <= 0}>
-            <Bookmark className="h-4 w-4" /> {item.available > 0 ? "Reserve" : "Nothing available"}
+            <Bookmark className="h-4 w-4" /> {item.available > 0 ? "Open in Reservation Form" : "Nothing available"}
           </Button>
         </>
       }

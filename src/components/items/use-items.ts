@@ -21,6 +21,8 @@ export type Item = {
   /** Posted issues, plus the Issued impact of adjustments. */
   issued: number;
   reorder_quantity: number;
+  /** Set aside as damaged or faulty; not usable stock. */
+  bad_qty: number;
   /** OK, LOW, REORDER NOW or OUT OF STOCK, as the workbook computes it. */
   reorder_status: "OK" | "LOW" | "REORDER NOW" | "OUT OF STOCK";
   /** Physically in stock. */
