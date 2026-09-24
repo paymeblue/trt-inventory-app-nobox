@@ -1,5 +1,5 @@
 import { transaction } from "@/lib/db";
-import { requireManager } from "@/lib/session";
+import { personOf, requireManager } from "@/lib/session";
 import { fail, handle, ok } from "@/lib/api";
 import { isSource } from "@/lib/rbac";
 import { importStock } from "@/lib/items";
@@ -27,7 +27,9 @@ export const POST = handle(async (req: Request) => {
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const result = await transaction((client) =>
-    importStock(client, source, buffer, { userId: session.sub, filename: file.name, commit }),
+    importStock(client, source, buffer, {
+      userId: session.sub, userName: personOf(session).name, userEmail: personOf(session).email, filename: file.name, commit,
+    }),
   );
   return ok({ filename: file.name, ...result });
 });

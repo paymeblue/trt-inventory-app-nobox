@@ -38,3 +38,8 @@ export class HttpError extends Error {
     this.status = status;
   }
 }
+
+/** The signed-in person as the logs record them (Recorded By / Issued By / Adjusted By). */
+export function personOf(session: SessionPayload) {
+  return { id: session.sub, name: session.name, email: session.email };
+}

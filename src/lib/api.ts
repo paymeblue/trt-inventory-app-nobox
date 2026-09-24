@@ -24,7 +24,7 @@ export function handle<Args extends unknown[]>(
       const pg = err as { code?: string; constraint?: string; message?: string };
       if (pg?.code === "23505") {
         const messages: Record<string, string> = {
-          items_source_sku_key: "An item with that SKU already exists in this inventory.",
+          items_source_sku_key: "A material with that Material Code already exists on this side.",
           categories_source_name_key: "A category with that name already exists.",
         };
         return fail(409, messages[pg.constraint ?? ""] ?? "That record already exists.");

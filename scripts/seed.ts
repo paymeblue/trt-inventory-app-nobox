@@ -106,16 +106,16 @@ async function seed(client: PoolClient) {
         [source, item.category, userId],
       );
       const { rows } = await client.query<{ id: string }>(
-        `INSERT INTO items (source, sku, name, category, colour, spec, unit, quantity, reorder_level,
+        `INSERT INTO items (source, sku, name, category, colour, spec, unit, opening_qty, quantity, reorder_level,
                             image_id, created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11) RETURNING id`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8,$9,$10,$11,$11) RETURNING id`,
         [source, item.sku, item.name, item.category, item.colour ?? null, item.spec ?? null,
          // Nobox is the smaller store, so it flags low stock at a quarter of the Factory level.
          item.unit, quantity, source === "NOBOX" ? Math.ceil(item.reorder / 4) : item.reorder, imageId, userId],
       );
       await client.query(
         `INSERT INTO item_movements (item_id, source, kind, delta, balance_after, note, created_by)
-         VALUES ($1,$2,'CREATE',$3,$3,'Opening stock',$4)`,
+         VALUES ($1,$2,'OPENING',$3,$3,'Opening stock',$4)`,
         [rows[0].id, source, quantity, userId],
       );
       count += 1;
@@ -131,8 +131,8 @@ async function seed(client: PoolClient) {
   ] as const;
   for (const [sku, quantity, project, notes] of RESERVATIONS) {
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO reservations (item_id, source, quantity, project, notes, reserved_by)
-       SELECT id, source, $2, $3, $4, $5 FROM items WHERE source = 'FACTORY' AND sku = $1
+      `INSERT INTO reservations (item_id, source, quantity, project, notes, reserved_by, designer_name, designer_email)
+       SELECT id, source, $2, $3, $4, $5, 'Zainab Bello', 'design@trtnobox.com' FROM items WHERE source = 'FACTORY' AND sku = $1
        RETURNING id`,
       [sku, quantity, project, notes, designer],
     );

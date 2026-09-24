@@ -1,13 +1,23 @@
 import type { PoolClient } from "pg";
 import { HttpError } from "./session";
 import type { Source } from "./rbac";
-import { recordMovement } from "./items";
+import { recordMovement, RESERVED_SQL } from "./items";
 
+/**
+ * Reservation_Log columns. A reservation's balance is what is still set aside:
+ * reserved − issued − released.
+ */
 export const RESERVATION_COLUMNS = `
-  r.id, r.ref, r.item_id, r.source, r.quantity::float8 AS quantity, r.project, r.notes, r.status,
+  r.id, r.ref, r.item_id, r.source, r.quantity::float8 AS quantity,
+  r.issued_qty::float8 AS issued_qty, r.released_qty::float8 AS released_qty,
+  GREATEST(r.quantity - r.issued_qty - r.released_qty, 0)::float8 AS balance,
+  r.project, r.notes, r.status, r.legacy_status, r.available_at_request::float8 AS available_at_request,
   r.created_at, r.closed_at, r.reserved_by,
-  i.name AS item_name, i.sku, i.unit, i.image_id,
-  ru.full_name AS reserved_by_name, cu.full_name AS closed_by_name`;
+  COALESCE(ru.full_name, r.designer_name) AS reserved_by_name,
+  COALESCE(ru.email, r.designer_email) AS reserved_by_email,
+  i.name AS item_name, i.sku, i.unit, i.image_id, i.category,
+  i.quantity::float8 AS in_stock,
+  cu.full_name AS closed_by_name`;
 
 export const RESERVATION_FROM = `
   FROM reservations r
@@ -15,19 +25,20 @@ export const RESERVATION_FROM = `
   LEFT JOIN users ru ON ru.id = r.reserved_by
   LEFT JOIN users cu ON cu.id = r.closed_by`;
 
+export type Person = { id: string; name: string; email: string };
+
 type LockedItem = { id: string; source: Source; name: string; sku: string; unit: string; quantity: number; reserved: number };
 
-/** Locks the item and returns its stock and what is already reserved. */
+/** Locks the item and returns its stock and what open reservations hold. */
 export async function lockItem(client: PoolClient, itemId: string): Promise<LockedItem> {
   const { rows } = await client.query<LockedItem>(
     `SELECT i.id, i.source, i.name, i.sku, i.unit, i.quantity::float8 AS quantity
        FROM items i WHERE i.id = $1 FOR UPDATE`,
     [itemId],
   );
-  if (!rows[0]) throw new HttpError(404, "Item not found.");
+  if (!rows[0]) throw new HttpError(404, "Material not found.");
   const { rows: r } = await client.query<{ reserved: number }>(
-    `SELECT COALESCE(SUM(quantity), 0)::float8 AS reserved FROM reservations
-      WHERE item_id = $1 AND status = 'RESERVED'`,
+    `SELECT (${RESERVED_SQL})::float8 AS reserved FROM items i WHERE i.id = $1`,
     [itemId],
   );
   return { ...rows[0], reserved: r[0].reserved };
@@ -36,55 +47,79 @@ export async function lockItem(client: PoolClient, itemId: string): Promise<Lock
 async function logEvent(
   client: PoolClient,
   reservationId: string,
-  action: "RESERVED" | "ISSUED" | "CANCELLED",
+  action: "RESERVED" | "ISSUED" | "CANCELLED" | "RELEASED",
   userId: string,
+  quantity: number,
   note?: string | null,
 ) {
   await client.query(
-    "INSERT INTO reservation_events (reservation_id, action, note, created_by) VALUES ($1,$2,$3,$4)",
-    [reservationId, action, note ?? null, userId],
+    "INSERT INTO reservation_events (reservation_id, action, quantity, note, created_by) VALUES ($1,$2,$3,$4,$5)",
+    [reservationId, action, quantity, note ?? null, userId],
   );
 }
 
 export type ReservationInput = { itemId: string; quantity: number; project: string; notes?: string | null };
 
-export async function createReservation(client: PoolClient, input: ReservationInput, userId: string) {
+/**
+ * Reservation_Form. Status Check, as the workbook words it: "Missing required
+ * fields", "OUT OF STOCK", "Insufficient available quantity".
+ */
+export async function createReservation(client: PoolClient, input: ReservationInput, who: Person) {
   const quantity = Number(input.quantity);
-  if (!Number.isFinite(quantity) || quantity <= 0) throw new HttpError(400, "Reserve at least 1.");
   const project = input.project?.trim();
-  if (!project) throw new HttpError(400, "Say which project this is for.");
+  if (!input.itemId || !project || !Number.isFinite(quantity)) throw new HttpError(400, "Missing required fields.");
+  if (quantity <= 0) throw new HttpError(400, "Quantity Requested must be greater than zero.");
 
   const item = await lockItem(client, input.itemId);
   const available = item.quantity - item.reserved;
+  if (available <= 0) throw new HttpError(400, `OUT OF STOCK: nothing of ${item.sku} | ${item.name} is available.`);
   if (quantity > available) {
-    throw new HttpError(
-      400,
-      `Only ${Math.max(0, available)} ${item.unit} of ${item.name} available` +
-        (item.reserved ? ` (${item.reserved} already reserved).` : "."),
-    );
+    throw new HttpError(400, `Insufficient available quantity: ${available} ${item.unit} of ${item.sku} | ${item.name} available.`);
   }
 
   const { rows } = await client.query<{ id: string; ref: string }>(
-    `INSERT INTO reservations (item_id, source, quantity, project, notes, reserved_by)
-     VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, ref`,
-    [item.id, item.source, quantity, project, input.notes?.trim() || null, userId],
+    `INSERT INTO reservations (item_id, source, quantity, project, notes, reserved_by, designer_name, designer_email, available_at_request)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, ref`,
+    [item.id, item.source, quantity, project, input.notes?.trim() || null, who.id, who.name, who.email, available],
   );
-  await logEvent(client, rows[0].id, "RESERVED", userId, input.notes);
+  await logEvent(client, rows[0].id, "RESERVED", who.id, quantity, input.notes);
   return rows[0];
 }
 
-type Open = { id: string; ref: string; item_id: string; source: Source; quantity: number; status: string; reserved_by: string | null };
+type Open = {
+  id: string; ref: string; item_id: string; source: Source; quantity: number; issued_qty: number;
+  released_qty: number; balance: number; status: string; reserved_by: string | null; project: string;
+};
 
 async function lockOpen(client: PoolClient, id: string): Promise<Open> {
   const { rows } = await client.query<Open>(
-    `SELECT id, ref, item_id, source, quantity::float8 AS quantity, status, reserved_by
+    `SELECT id, ref, item_id, source, quantity::float8 AS quantity, issued_qty::float8 AS issued_qty,
+            released_qty::float8 AS released_qty,
+            GREATEST(quantity - issued_qty - released_qty, 0)::float8 AS balance,
+            status, reserved_by, project
        FROM reservations WHERE id = $1 FOR UPDATE`,
     [id],
   );
   const r = rows[0];
   if (!r) throw new HttpError(404, "Reservation not found.");
-  if (r.status !== "RESERVED") throw new HttpError(409, `${r.ref} is already ${r.status.toLowerCase()}.`);
+  if (r.status !== "RESERVED" && r.status !== "PART_ISSUED") {
+    throw new HttpError(409, `${r.ref} is already ${r.status === "ISSUED" ? "fully issued" : "closed"}.`);
+  }
   return r;
+}
+
+/** RESERVED → PART_ISSUED → ISSUED, or CANCELLED if it was released without any issue. */
+async function settle(client: PoolClient, r: Open, issued: number, released: number, userId: string) {
+  const balance = Math.max(0, r.quantity - issued - released);
+  const status = balance > 0 ? (issued > 0 ? "PART_ISSUED" : "RESERVED") : issued > 0 ? "ISSUED" : "CANCELLED";
+  await client.query(
+    `UPDATE reservations SET issued_qty = $1, released_qty = $2, status = $3, updated_at = now(),
+            closed_by = CASE WHEN $4 THEN $5::uuid ELSE closed_by END,
+            closed_at = CASE WHEN $4 THEN now() ELSE closed_at END
+      WHERE id = $6`,
+    [issued, released, status, balance === 0, userId, r.id],
+  );
+  return { status, balance };
 }
 
 export async function findReservation(client: PoolClient, id: string) {
@@ -95,36 +130,68 @@ export async function findReservation(client: PoolClient, id: string) {
   return rows[0] ?? null;
 }
 
-/** The items have left: complete the reservation and take them out of stock. */
-export async function issueReservation(client: PoolClient, id: string, userId: string, note?: string | null) {
+/**
+ * Stock_Issue_Form: the items have left the store for production. Status Check:
+ * "Quantity must be greater than zero", "Issue exceeds remaining reservation
+ * balance" — and, beyond the workbook, the stock must physically be there.
+ */
+export async function issueReservation(
+  client: PoolClient,
+  id: string,
+  who: Person,
+  input: { quantity?: number; notes?: string | null } = {},
+) {
   const r = await lockOpen(client, id);
-  const item = await lockItem(client, r.item_id);
-  if (r.quantity > item.quantity) {
-    throw new HttpError(400, `Only ${item.quantity} ${item.unit} of ${item.name} in stock; ${r.ref} needs ${r.quantity}.`);
+  const quantity = input.quantity === undefined ? r.balance : Number(input.quantity);
+  if (!Number.isFinite(quantity) || quantity <= 0) throw new HttpError(400, "Quantity must be greater than zero.");
+  if (quantity > r.balance) {
+    throw new HttpError(400, `Issue exceeds remaining reservation balance: ${r.ref} has ${r.balance} left to issue.`);
   }
-  const balance = item.quantity - r.quantity;
+
+  const item = await lockItem(client, r.item_id);
+  if (quantity > item.quantity) {
+    throw new HttpError(400, `Not enough in stock: only ${item.quantity} ${item.unit} of ${item.name} on hand; this issue needs ${quantity}.`);
+  }
+
+  const balanceAfter = item.quantity - quantity;
   await client.query("UPDATE items SET quantity = $1, updated_by = $2, updated_at = now() WHERE id = $3", [
-    balance, userId, item.id,
+    balanceAfter, who.id, item.id,
   ]);
-  await client.query(
-    "UPDATE reservations SET status = 'ISSUED', closed_by = $1, closed_at = now(), updated_at = now() WHERE id = $2",
-    [userId, id],
+  const { rows } = await client.query<{ ref: string }>(
+    `INSERT INTO stock_issues (reservation_id, reservation_ref, item_id, source, quantity, project, notes, issued_by, issued_by_name, issued_by_email)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ref`,
+    [r.id, r.ref, item.id, item.source, quantity, r.project, input.notes?.trim() || null, who.id, who.name, who.email],
   );
+  const settled = await settle(client, r, r.issued_qty + quantity, r.released_qty, who.id);
   await recordMovement(client, {
-    itemId: item.id, source: item.source, kind: "ISSUE", delta: -r.quantity, balance,
-    note: `Issued ${r.ref}${note ? ` · ${note}` : ""}`, userId,
+    itemId: item.id, source: item.source, kind: "ISSUE", delta: -quantity, balance: balanceAfter,
+    note: `${rows[0].ref} against ${r.ref}${input.notes ? ` · ${input.notes}` : ""}`, userId: who.id,
   });
-  await logEvent(client, id, "ISSUED", userId, note);
-  return { ref: r.ref, balance };
+  await logEvent(client, r.id, "ISSUED", who.id, quantity, input.notes);
+  return { ref: r.ref, issueRef: rows[0].ref, quantity, stockLeft: balanceAfter, balance: settled.balance, status: settled.status };
 }
 
-/** Releases the stock without issuing it. */
-export async function cancelReservation(client: PoolClient, id: string, userId: string, note?: string | null) {
+/** Frees some or all of a reservation's balance without deducting stock. */
+export async function releaseReservation(
+  client: PoolClient,
+  id: string,
+  who: Person,
+  input: { quantity?: number; notes?: string | null; action?: "CANCELLED" | "RELEASED" } = {},
+) {
   const r = await lockOpen(client, id);
-  await client.query(
-    "UPDATE reservations SET status = 'CANCELLED', closed_by = $1, closed_at = now(), updated_at = now() WHERE id = $2",
-    [userId, id],
+  const quantity = input.quantity === undefined ? r.balance : Number(input.quantity);
+  if (!Number.isFinite(quantity) || quantity <= 0) throw new HttpError(400, "Quantity must be greater than zero.");
+  if (quantity > r.balance) throw new HttpError(400, `${r.ref} only has ${r.balance} left reserved.`);
+  const settled = await settle(client, r, r.issued_qty, r.released_qty + quantity, who.id);
+  await logEvent(client, r.id, input.action ?? "RELEASED", who.id, quantity, input.notes);
+  return { ref: r.ref, released: quantity, balance: settled.balance, status: settled.status };
+}
+
+/** A reservation, by the reference printed on it (REQ-…). */
+export async function resolveReservationRef(client: PoolClient, ref: string) {
+  const { rows } = await client.query<{ id: string; item_id: string; source: Source }>(
+    "SELECT id, item_id, source FROM reservations WHERE upper(ref) = upper($1)",
+    [ref.trim()],
   );
-  await logEvent(client, id, "CANCELLED", userId, note);
-  return { ref: r.ref };
+  return rows[0] ?? null;
 }

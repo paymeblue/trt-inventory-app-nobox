@@ -1,17 +1,20 @@
 import * as XLSX from "xlsx";
 import type { PoolClient } from "pg";
 import { SOURCE_LABELS, type Source } from "./rbac";
-import { createReservation } from "./reservations";
+import { createReservation, type Person } from "./reservations";
 import { RESERVED_SQL } from "./items";
 import { MAX_ROWS, number, text, type TemplateError } from "./template";
 
-/** The reservation upload. Designers fill one row per item they want set aside. */
+/**
+ * The reservation upload: the Reservation_Form's fields, one row per material.
+ * Designer Name and Email come from the signed-in account.
+ */
 export const RESERVATION_COLUMNS_TEMPLATE = [
-  { header: "SKU", width: 16, rule: "Required. The item's code, as shown in the inventory." },
+  { header: "Material_Code", width: 16, rule: "Required. The material's code, as shown in the inventory (e.g. FINSA 116)." },
   { header: "From", width: 10, rule: "Required. Factory or Nobox." },
-  { header: "Quantity", width: 11, rule: "Required. How many to reserve. Must be more than 0 and no more than is available." },
-  { header: "Project", width: 30, rule: "Required. The project or client this is for." },
-  { header: "Notes", width: 36, rule: "Optional." },
+  { header: "Quantity_Requested", width: 18, rule: "Required. More than 0 and no more than the Available Qty." },
+  { header: "Project_Name", width: 30, rule: "Required. The project or client this is for." },
+  { header: "Purpose_Notes", width: 40, rule: "Optional. e.g. EXHIBITION, CLOSETS, TV UNIT." },
 ] as const;
 
 export const RESERVATION_SHEET = "Reservations";
@@ -34,7 +37,7 @@ export function buildReservationTemplate(): Buffer {
     [],
     ["Example"],
     RESERVATION_COLUMNS_TEMPLATE.map((c) => c.header),
-    ["MEL-18-WHT", "Factory", 6, "Ikoyi Kitchen", "Island and tall units"],
+    ["FINSA 116", "Factory", 6, "DAGGASH", "CLOSETS"],
   ]);
   guide["!cols"] = [{ wch: 16 }, { wch: 90 }];
   XLSX.utils.book_append_sheet(book, guide, "Instructions");
@@ -81,14 +84,14 @@ function parse(buffer: Buffer): { rows: Row[]; errors: TemplateError[]; fatal: b
     const fail = (column: string, message: string) => errors.push({ row: rowNo, column, message });
 
     const sku = text(cells[0]).toUpperCase();
-    if (!sku) fail("SKU", "SKU is required.");
+    if (!sku) fail("Material_Code", "Missing required fields: Material_Code.");
     const from = text(cells[1]).toLowerCase();
     const source: Source | null = from === "factory" ? "FACTORY" : from === "nobox" ? "NOBOX" : null;
     if (!source) fail("From", `"${text(cells[1])}" must be Factory or Nobox.`);
     const quantity = number(cells[2]);
-    if (quantity === null || quantity <= 0) fail("Quantity", `"${text(cells[2])}" must be a number more than 0.`);
+    if (quantity === null || quantity <= 0) fail("Quantity_Requested", `"${text(cells[2])}" must be a number greater than zero.`);
     const project = text(cells[3]);
-    if (!project) fail("Project", "Project is required.");
+    if (!project) fail("Project_Name", "Missing required fields: Project_Name.");
 
     if (errors.length > before) continue;
     rows.push({ row: rowNo, sku, source: source!, quantity: quantity!, project, notes: text(cells[4]) || null });
@@ -104,7 +107,7 @@ function parse(buffer: Buffer): { rows: Row[]; errors: TemplateError[]; fatal: b
 export async function importReservations(
   client: PoolClient,
   buffer: Buffer,
-  opts: { userId: string; commit: boolean },
+  opts: { who: Person; commit: boolean },
 ): Promise<{ preview: ReservationPreview[]; errors: TemplateError[]; applied: boolean }> {
   const parsed = parse(buffer);
   if (parsed.fatal) return { preview: [], errors: parsed.errors, applied: false };
@@ -115,22 +118,24 @@ export async function importReservations(
   const ids = new Map<number, string>();
 
   for (const r of parsed.rows) {
-    const { rows } = await client.query<{ id: string; name: string; unit: string; available: number }>(
-      `SELECT i.id, i.name, i.unit, (i.quantity - ${RESERVED_SQL})::float8 AS available
+    const { rows } = await client.query<{ id: string; sku: string; name: string; unit: string; available: number }>(
+      `SELECT i.id, i.sku, i.name, i.unit, (i.quantity - ${RESERVED_SQL})::float8 AS available
          FROM items i WHERE i.source = $1 AND lower(i.sku) = lower($2)`,
       [r.source, r.sku],
     );
     const item = rows[0];
     if (!item) {
-      errors.push({ row: r.row, column: "SKU", message: `No ${SOURCE_LABELS[r.source]} item with SKU ${r.sku}.` });
+      errors.push({ row: r.row, column: "Material_Code", message: `No ${SOURCE_LABELS[r.source]} material with code ${r.sku}.` });
       continue;
     }
     const left = item.available - (claimed.get(item.id) ?? 0);
     if (r.quantity > left) {
       errors.push({
         row: r.row,
-        column: "Quantity",
-        message: `Only ${Math.max(0, left)} ${item.unit} of ${item.name} available${claimed.has(item.id) ? " after earlier rows in this file" : ""}.`,
+        column: "Quantity_Requested",
+        message: left <= 0
+          ? `OUT OF STOCK: nothing of ${item.sku} | ${item.name} is available${claimed.has(item.id) ? " after earlier rows in this file" : ""}.`
+          : `Insufficient available quantity: ${left} ${item.unit} of ${item.sku} | ${item.name} available${claimed.has(item.id) ? " after earlier rows in this file" : ""}.`,
       });
       continue;
     }
@@ -143,7 +148,7 @@ export async function importReservations(
   if (errors.length || !opts.commit) return { preview: errors.length ? [] : preview, errors, applied: false };
 
   for (const r of parsed.rows) {
-    await createReservation(client, { itemId: ids.get(r.row)!, quantity: r.quantity, project: r.project, notes: r.notes }, opts.userId);
+    await createReservation(client, { itemId: ids.get(r.row)!, quantity: r.quantity, project: r.project, notes: r.notes }, opts.who);
   }
   return { preview, errors: [], applied: true };
 }

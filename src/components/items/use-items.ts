@@ -10,9 +10,19 @@ export type Item = {
   sku: string;
   name: string;
   category: string | null;
+  subcategory: string | null;
   colour: string | null;
   spec: string | null;
+  dimensions: string | null;
   unit: string;
+  opening_qty: number;
+  /** Posted Stock Additions. */
+  added: number;
+  /** Posted issues, plus the Issued impact of adjustments. */
+  issued: number;
+  reorder_quantity: number;
+  /** OK, LOW, REORDER NOW or OUT OF STOCK, as the workbook computes it. */
+  reorder_status: "OK" | "LOW" | "REORDER NOW" | "OUT OF STOCK";
   /** Physically in stock. */
   quantity: number;
   /** Set aside by open reservations. */
@@ -31,7 +41,7 @@ export type ItemsResponse = {
   items: Item[];
   total: number;
   categories: string[];
-  counts: { factory: number; nobox: number; low: number; out: number; reserved: number };
+  counts: { factory: number; nobox: number; low: number; reorder: number; out: number; reserved: number };
   page: number;
   pageSize: number;
 };

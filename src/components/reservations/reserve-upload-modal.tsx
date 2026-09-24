@@ -73,7 +73,7 @@ export function ReserveUploadModal({ onClose, onApplied }: { onClose: () => void
       onClose={onClose}
       size="xl"
       title="Reserve from Excel"
-      description="One row per item: SKU, From (Factory or Nobox), Quantity, Project, Notes."
+      description="One row per material: Material_Code, From (Factory or Nobox), Quantity_Requested, Project_Name, Purpose_Notes."
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>

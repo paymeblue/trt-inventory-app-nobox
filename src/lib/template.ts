@@ -1,39 +1,48 @@
 import * as XLSX from "xlsx";
 
 /**
- * The upload template. Factory and Nobox use the same one. An upload is only
- * accepted when its first row is exactly these headers, in this order.
+ * The stock upload template, on the workbook's Inventory_Master column names.
+ * Factory and Nobox use the same one. An upload is only accepted when its first
+ * row is exactly these headers, in this order.
  */
 export const TEMPLATE_COLUMNS = [
-  { key: "sku", header: "SKU", width: 16, rule: "Optional. The item's code. If given, it matches an existing item or creates one with that code. If blank, the row matches an existing item by Name, or creates a new one with a code made from its name." },
-  { key: "name", header: "Name", width: 34, rule: "Required for new items and whenever SKU is blank. Otherwise blank keeps the existing name." },
-  { key: "category", header: "Category", width: 20, rule: "Optional. Blank keeps the current value." },
-  { key: "colour", header: "Colour", width: 16, rule: "Optional. Blank keeps the current value." },
-  { key: "spec", header: "Specification", width: 24, rule: "Optional. Size, thickness, finish. Blank keeps the current value." },
-  { key: "unit", header: "Unit", width: 10, rule: "Optional. pcs, sheet, roll, m, kg… New items default to pcs." },
-  { key: "quantity", header: "Quantity", width: 11, rule: "Required. Added to current stock. Use a negative number to remove stock. New items need 0 or more." },
-  { key: "reorderLevel", header: "Reorder Level", width: 14, rule: "Optional. Flag the item as low stock at or below this number." },
-  { key: "description", header: "Description", width: 36, rule: "Optional. Anything the design team should know." },
+  { key: "sku", header: "Material_Code", width: 16, rule: "Optional. Matches an existing material, or creates one with this code. If blank, the row matches an existing material by Material_Name, or creates one with a code made from its name." },
+  { key: "name", header: "Material_Name", width: 36, rule: "Required for new materials and whenever Material_Code is blank. Otherwise blank keeps the existing name." },
+  { key: "category", header: "Category", width: 20, rule: "Optional. e.g. BOARDS, EDGE TAPES (PVC), HANDLES. Blank keeps the current value." },
+  { key: "subcategory", header: "Subcategory", width: 26, rule: "Optional. e.g. FINSA (MEASURED IN SHEETS). Blank keeps the current value." },
+  { key: "spec", header: "Specification", width: 16, rule: "Optional. e.g. 18MM. Blank keeps the current value." },
+  { key: "dimensions", header: "Dimensions", width: 14, rule: "Optional. e.g. 60 X 60. Blank keeps the current value." },
+  { key: "unit", header: "Unit", width: 8, rule: "Optional. Sheet, Pcs, Unit, Slab. New materials default to Unit." },
+  { key: "quantity", header: "Quantity_Added", width: 15, rule: "Optional, 0 or more. For a new material it is the Opening_Qty; for an existing one it is posted as a Stock Addition. To remove stock use the Stock Adjustment form." },
+  { key: "reorderLevel", header: "Reorder_Level", width: 14, rule: "Optional. REORDER NOW when available is at or below this; LOW up to 1.25× it." },
+  { key: "reorderQuantity", header: "Reorder_Quantity", width: 16, rule: "Optional. How many to reorder." },
+  { key: "supplierRef", header: "Supplier_or_Reference", width: 22, rule: "Optional. Recorded on the Stock Addition." },
+  { key: "documentRef", header: "Document_Ref", width: 14, rule: "Optional. Recorded on the Stock Addition." },
+  { key: "notes", header: "Notes", width: 30, rule: "Optional. Kept on the material." },
 ] as const;
 
 export type TemplateKey = (typeof TEMPLATE_COLUMNS)[number]["key"];
 
-export const TEMPLATE_SHEET = "Items";
+export const TEMPLATE_SHEET = "Inventory_Master";
 export const MAX_ROWS = 5000;
 
 export type TemplateRow = {
   /** Spreadsheet row number, as the user sees it in Excel. */
   row: number;
-  /** Null when the cell was left blank; the item is then matched by name. */
+  /** Null when the cell was left blank; the material is then matched by name. */
   sku: string | null;
   name: string | null;
   category: string | null;
-  colour: string | null;
+  subcategory: string | null;
   spec: string | null;
+  dimensions: string | null;
   unit: string | null;
   quantity: number;
   reorderLevel: number | null;
-  description: string | null;
+  reorderQuantity: number | null;
+  supplierRef: string | null;
+  documentRef: string | null;
+  notes: string | null;
 };
 
 export type TemplateError = { row: number | null; column: string | null; message: string };
@@ -47,22 +56,22 @@ export function buildTemplate(): Buffer {
   XLSX.utils.book_append_sheet(book, items, TEMPLATE_SHEET);
 
   const guide = XLSX.utils.aoa_to_sheet([
-    ["TRT Nobox inventory upload template"],
+    ["TRT Nobox stock upload template"],
     [],
-    ["Fill in the Items sheet, one row per item, and upload it from the Factory or Nobox dashboard."],
+    ["Fill in the Inventory_Master sheet, one row per material, and upload it from the Factory or Nobox dashboard."],
     ["Do not rename, reorder, add or remove columns. A file whose headers differ is rejected."],
     ["If any row has a problem, nothing is uploaded. Fix the rows listed and upload again."],
-    ["Each SKU (or, for rows without a SKU, each Name) may appear only once per file."],
+    ["Each Material_Code (or, for rows without one, each Material_Name) may appear only once per file."],
     [],
     ["Column", "Rule"],
     ...TEMPLATE_COLUMNS.map((c) => [c.header, c.rule]),
     [],
-    ["Example rows (for reference only, do not paste into Items unless you mean them)"],
+    ["Example rows (for reference only, do not paste into Inventory_Master unless you mean them)"],
     TEMPLATE_COLUMNS.map((c) => c.header),
-    ["MEL-18-WHT", "18mm White Melamine Board", "Boards & Panels", "White", "2440 × 1220 × 18mm", "sheet", 20, 10, ""],
-    ["MEL-18-WHT", "", "", "", "", "", -4, "", "4 sheets used on a job"],
+    ["FINSA 116", "LISSA OAK 18MM", "BOARDS", "FINSA (MEASURED IN SHEETS)", "18MM", "", "Sheet", 58, 2, 4, "Finsa Lagos", "INV-2231", ""],
+    ["LCQD 106", "DRAWER FACE (OFFWHITE) FLAT", "BOARDS", "LACQUERED (MEASURED IN PCS)", "", "60 X 60", "Pcs", 9, 2, 4, "", "", ""],
   ]);
-  guide["!cols"] = [{ wch: 18 }, { wch: 96 }];
+  guide["!cols"] = [{ wch: 22 }, { wch: 110 }];
   XLSX.utils.book_append_sheet(book, guide, "Instructions");
 
   return XLSX.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer;
@@ -142,46 +151,51 @@ export function parseTemplate(
     const errorsBefore = errors.length;
 
     const cell = (key: TemplateKey) => cells[TEMPLATE_COLUMNS.findIndex((c) => c.key === key)];
+    const header = (key: TemplateKey) => TEMPLATE_COLUMNS.find((c) => c.key === key)!.header;
     const fail = (key: TemplateKey | null, message: string) =>
-      errors.push({
-        row: rowNo,
-        column: key ? TEMPLATE_COLUMNS.find((c) => c.key === key)!.header : null,
-        message,
-      });
+      errors.push({ row: rowNo, column: key ? header(key) : null, message });
+    const optionalNumber = (key: TemplateKey) => {
+      const raw = text(cell(key));
+      if (!raw) return null;
+      const n = number(cell(key));
+      if (n === null || n < 0) {
+        fail(key, `"${raw}" is not a number of 0 or more.`);
+        return null;
+      }
+      return n;
+    };
 
     const sku = text(cell("sku")).toUpperCase();
     const name = text(cell("name"));
-    // Rows without a SKU are identified by their name instead.
+    // Rows without a code are identified by their name instead.
     const key = sku ? `sku:${sku.toLowerCase()}` : `name:${name.toLowerCase()}`;
-    if (!sku && !name) fail("sku", "Give a SKU or a Name, so the row can be matched to an item.");
-    else if (sku.length > 48) fail("sku", "SKU must be 48 characters or fewer.");
+    if (!sku && !name) fail("sku", "Give a Material_Code or a Material_Name, so the row can be matched to a material.");
+    else if (sku.length > 48) fail("sku", "Material_Code must be 48 characters or fewer.");
     else if (seen.has(key)) {
-      fail(sku ? "sku" : "name", `${sku || name} is already on row ${seen.get(key)}. Each item may appear once per file.`);
+      fail(sku ? "sku" : "name", `${sku || name} is already on row ${seen.get(key)}. Each material may appear once per file.`);
     } else seen.set(key, rowNo);
 
-    const quantityCell = text(cell("quantity"));
-    const quantity = number(cell("quantity"));
-    if (!quantityCell) fail("quantity", "Quantity is required. Use 0 to change details only.");
-    else if (quantity === null) fail("quantity", `"${quantityCell}" is not a number.`);
-
-    const reorderCell = text(cell("reorderLevel"));
-    const reorderLevel = number(cell("reorderLevel"));
-    if (reorderCell && (reorderLevel === null || reorderLevel < 0)) {
-      fail("reorderLevel", `"${reorderCell}" is not a number of 0 or more.`);
-    }
+    const quantity = optionalNumber("quantity") ?? 0;
+    const reorderLevel = optionalNumber("reorderLevel");
+    const reorderQuantity = optionalNumber("reorderQuantity");
 
     if (errors.length > errorsBefore) continue;
+    const opt = (k: TemplateKey) => text(cell(k)) || null;
     rows.push({
       row: rowNo,
       sku: sku || null,
       name: name || null,
-      category: text(cell("category")) || null,
-      colour: text(cell("colour")) || null,
-      spec: text(cell("spec")) || null,
-      unit: text(cell("unit")) || null,
-      quantity: quantity ?? 0,
-      reorderLevel: reorderCell ? reorderLevel : null,
-      description: text(cell("description")) || null,
+      category: opt("category"),
+      subcategory: opt("subcategory"),
+      spec: opt("spec"),
+      dimensions: opt("dimensions"),
+      unit: opt("unit"),
+      quantity,
+      reorderLevel,
+      reorderQuantity,
+      supplierRef: opt("supplierRef"),
+      documentRef: opt("documentRef"),
+      notes: opt("notes"),
     });
   }
 

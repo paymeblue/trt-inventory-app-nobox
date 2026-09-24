@@ -11,7 +11,8 @@ import { EmptyState } from "@/components/ui/empty";
 import { Pagination } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { ProductImage } from "@/components/product-image";
-import { LiveIndicator, SourceBadge, StockStatus } from "@/components/status";
+import { LiveIndicator, SourceBadge } from "@/components/status";
+import { ReorderBadge } from "@/components/forms/form-parts";
 import { ItemFilters, useFilters } from "@/components/items/filters";
 import { ItemDetail } from "@/components/items/item-detail";
 import { useItems, type Item } from "@/components/items/use-items";
@@ -26,7 +27,7 @@ import { cn, qty, relativeTime } from "@/lib/utils";
 const PAGE_SIZE = 48;
 
 /** A request to reserve, made while signed out, survives the trip through /login in the URL. */
-type Intent = { kind: "reserve"; item: Item } | { kind: "upload" };
+type Intent = { kind: "reserve"; item: Item | null } | { kind: "upload" };
 
 const TABS = [
   { value: "", label: "Everything" },
@@ -53,6 +54,12 @@ export function InventoryView() {
     if (!session) return;
     const url = new URL(window.location.href);
     const reserve = url.searchParams.get("reserve");
+    if (reserve === "new") {
+      url.searchParams.delete("reserve");
+      window.history.replaceState(null, "", url.pathname + url.search);
+      setIntent({ kind: "reserve", item: null });
+      return;
+    }
     const upload = url.searchParams.get("upload");
     if (!reserve && !upload) return;
     url.searchParams.delete("reserve");
@@ -70,6 +77,11 @@ export function InventoryView() {
     setOpen(null);
     if (session) setIntent({ kind: "reserve", item });
     else setSignIn({ title: `Sign in to reserve ${item.name}`, returnTo: `/inventory?reserve=${item.id}` });
+  }
+
+  function newReservation() {
+    if (session) setIntent({ kind: "reserve", item: null });
+    else setSignIn({ title: "Sign in to reserve", returnTo: "/inventory?reserve=new" });
   }
 
   function uploadReservations() {
@@ -97,6 +109,9 @@ export function InventoryView() {
             <LiveIndicator syncedAt={liveAt} error={error} />
             <Button variant="secondary" onClick={uploadReservations}>
               <FileSpreadsheet className="h-4 w-4" /> Reserve from Excel
+            </Button>
+            <Button onClick={newReservation}>
+              <Bookmark className="h-4 w-4" /> New reservation
             </Button>
           </>
         }
@@ -237,7 +252,7 @@ export function InventoryView() {
                           <p className="tabular mt-1 text-[11px] text-warn">{qty(item.reserved)} reserved of {qty(item.quantity)}</p>
                         ) : null}
                       </div>
-                      <StockStatus onHand={item.available} reorder={item.reorder_level} />
+                      <ReorderBadge status={item.reorder_status} />
                     </div>
                     <button
                       onClick={(e) => {
@@ -299,7 +314,7 @@ export function InventoryView() {
                       {item.reserved > 0 ? qty(item.reserved) : <span className="text-fg-subtle">—</span>}
                     </Td>
                     <Td align="center" className="hidden sm:table-cell">
-                      <StockStatus onHand={item.available} reorder={item.reorder_level} />
+                      <ReorderBadge status={item.reorder_status} />
                     </Td>
                     <Td align="right" className="hidden whitespace-nowrap text-[12px] text-fg-subtle md:table-cell">
                       {relativeTime(item.updated_at)}
@@ -326,7 +341,7 @@ export function InventoryView() {
 
       {intent?.kind === "reserve" && session ? (
         <ReserveModal
-          item={items.find((i) => i.id === intent.item.id) ?? intent.item}
+          item={intent.item ? items.find((i) => i.id === intent.item!.id) ?? intent.item : null}
           onClose={() => setIntent(null)}
           onSaved={() => {
             setIntent(null);

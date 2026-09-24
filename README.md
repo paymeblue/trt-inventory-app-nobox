@@ -6,74 +6,73 @@ keep it up to date and issue reservations when the items leave the store.
 
 ## What it does
 
-| Screen | Who | Covers |
+This is the TRT **Inventory Reservation and Stock Monitoring** workbook as an app:
+Inventory_Master, its four forms and its four logs, with the same fields, the
+same lookups, the same "Status Check" messages and the same Reorder_Status rule.
+
+| Screen | Who | Workbook equivalent |
 |---|---|---|
-| **Inventory** (`/inventory`) | Anyone, **no sign-in needed** | Every item from both sides, labelled **Factory** or **Nobox**, with available / reserved / in-stock figures. Filter by side, category and stock level; search; sort. Checks for changes every 3 seconds; changed or new items flash, and deductions pop up as notifications. **Reserve** (one item, or **Reserve from Excel**) asks a signed-out visitor to sign in and then brings them straight back to finish. |
-| **Reservations** (`/reservations`) | Signed in | The reservation log: waiting to issue, issued, cancelled. Managers **Issue** (the items have left the store for production; only now is stock deducted) or **Release**. Designers can cancel their own. |
-| **Factory** (`/factory`) | Factory manager, admin | Add, edit and delete items; **Add** and **Deduct** stock by any amount with a note; manage **Categories**; upload the Excel template; how many reservations are waiting to issue; recent changes. |
-| **Nobox** (`/nobox`) | Nobox manager, admin | The same, for Nobox items. |
+| **Inventory** (`/inventory`) | Anyone, no sign-in | Inventory_Master, read-only: every material by **Material_Code \| Name**, labelled Factory or Nobox, with Available_Qty and Reorder_Status. Live (checks every 3 s). |
+| **Reservation Form** (Inventory → New reservation / Reserve) | Designers | Reservation_Form: Designer Name + Email (from the account), Project Name, Material (Code \| Name), Quantity Requested, Purpose / Notes; lookups Code, Name, Category, Specification, Dimensions, Unit, Available Qty; Status Check "Missing required fields" / "OUT OF STOCK" / "Insufficient available quantity". Also **Reserve from Excel**. Signed-out visitors are asked to sign in and brought back. |
+| **Reservation Log** (`/reservations`) | Signed in | Reservation_Log: ID, timestamp, designer, project, material, reserved, issued, balance, status (Reserved, Part issued, Issued, Released). |
+| **Stock Issue Form** | Factory / Nobox team | Stock_Issue_Form: Reservation ID, Quantity To Issue (part or all), Notes; lookups Project, Material, Reserved Qty, Already Issued, Balance To Issue, Available Inventory; "Issue exceeds remaining reservation balance". The stock must physically be there. Only issuing deducts reserved stock. |
+| **Stock Addition Form** | Factory / Nobox team | Stock_Addition_Form: Material, Quantity Added, Supplier / Reference, Document Ref, Notes. |
+| **Stock Adjustment Form** | Factory / Nobox team | Stock_Adjustment_Form: Related ID, Material, Adjustment Type (Return to Stock, Additional Issue, Reservation Release, Damage / Write-off, Count Gain, Count Loss), Quantity Impact; shows Stock / Reserved / Issued Impact Signed. |
+| **Logs** (`/logs`) | Signed in | Stock_Issue_Log, Stock_Addition_Log, Stock_Adjustment_Log. |
+| **Factory / Nobox** (`/factory`, `/nobox`) | That side's team, admin | Dashboard (Total Materials, Opening Qty, Available Qty, Reserved Qty, Issued Qty, Low Stock SKUs), the reorder alert list with Reorder_Quantity, the three forms, and Inventory_Master (Opening, Added, Reserved, Issued, In stock, Available, Reorder_Status). |
 | **Team** (`/users`) | Admin | Accounts and roles. |
 
-Light and dark themes, laid out for phone, tablet and desktop.
+### Quantities, as the workbook defines them
 
-### Stock levels
+- **In stock** = Opening_Qty + Stock_Added + adjustments − Issued.
+- **Reserved_Qty** = what open and part-issued reservations still hold.
+- **Available_Qty** = In stock − Reserved.
+- **Reorder_Status**: OUT OF STOCK at 0 or below; REORDER NOW at or below Reorder_Level;
+  LOW at or below 1.25 × Reorder_Level; otherwise OK. **Low Stock SKUs** counts all three.
 
-- **Available** = in stock − reserved. It is what can still be reserved, and what
-  the stock status is judged on.
-- **Low stock**: available is above 0 and at or below the item's **Reorder Level**.
-- **Out of stock**: nothing available. An item with a Reorder Level of 0 is never "low".
+One deliberate difference: the workbook's formulas move Available_Qty by *twice*
+the quantity for a Return to Stock or an Additional Issue (they count it in both
+Adjustment_Net_Stock and Issued_Qty). Here the goods move once; the three signed
+impacts are still logged exactly as the form computes them.
 
-### Reservations
+### Loading the workbook
 
-1. A designer reserves a quantity of an item for a project (form or Excel). It is
-   set aside but **not** deducted. Anyone reserving the same item sees who else
-   has it, and everyone signed in is notified live.
-2. When the items leave the store for production, the Factory or Nobox manager
-   **issues** the reservation. The app checks the stock is physically there, and
-   only then deducts it. The designer is notified.
-3. Or the manager releases it (or the designer cancels it), and it becomes
-   available again with nothing deducted.
+```bash
+npm run db:import-workbook -- "INVENTORY RESERVATION AND STOCK MONITORING.xlsx"            # dry run + report
+npm run db:import-workbook -- "INVENTORY RESERVATION AND STOCK MONITORING.xlsx" --commit   # write it
+```
 
-You cannot reserve more than is available, and a manual deduction or an upload
-cannot eat into reserved stock. Every step is kept in the log.
+Imports Inventory_Master (codes, names, category, subcategory, specification,
+dimensions, unit, Opening_Qty, Reorder_Level, Reorder_Quantity), Reservation_Log,
+Stock_Issue_Log and Stock_Addition_Log with their original IDs and timestamps.
+It is safe to run again. It prints every problem it found in the workbook (duplicate
+IDs, a duplicated code, issues against reservations not in the log, codes with stray
+spaces) and how it handled each, then reconciles Available_Qty against the workbook's
+own formulas. Stock is derived from the logs, as the workbook's governance says it should be.
+The Germana sinks marked "IN NOBOX" go to Nobox; everything else to the Factory.
 
-**Reservation template** (`/api/reservations/template`): `SKU` · `From` (Factory or
-Nobox) · `Quantity` · `Project` · `Notes`. Same rules as below: exact headers, every
-problem listed, nothing reserved unless every row is fine.
+### The Excel templates
 
-### The Excel template
+Both are exact-header, all-or-nothing, and list every problem by row and column.
 
-Download it from either dashboard (`/api/items/template`). Factory and Nobox use
-the same one. The **Items** sheet has exactly these columns, in this order:
-
-`SKU` · `Name` · `Category` · `Colour` · `Specification` · `Unit` · `Quantity` · `Reorder Level` · `Description`
-
-- **The headers must match exactly.** A file with a renamed, reordered, added or
-  missing column is rejected.
-- **Quantity is added to current stock.** A negative number removes stock; 0
-  changes details only. Stock can never go below zero.
-- **SKU is optional.** Given, it matches an existing item on that side or creates
-  one with that code. Blank, the row matches an existing item **by Name**, or
-  creates a new one with a code made from the name (never clashing with an
-  existing code). New items need a Name and a quantity of 0 or more. Each item may
-  appear once per file.
-- Blank optional cells keep the item's current value.
-- **All or nothing.** The file is checked first and every problem is listed by
-  row and column. If there is any problem, nothing is written.
-
-The **Instructions** sheet in the template repeats these rules with examples.
+- **Stock** (`/api/items/template`), on Inventory_Master's names: `Material_Code` · `Material_Name` ·
+  `Category` · `Subcategory` · `Specification` · `Dimensions` · `Unit` · `Quantity_Added` · `Reorder_Level` ·
+  `Reorder_Quantity` · `Supplier_or_Reference` · `Document_Ref` · `Notes`. A new material starts with
+  Quantity_Added as its Opening_Qty; on an existing one it is posted as a Stock Addition. Material_Code is
+  optional (a blank row matches by name, or gets a generated code). Stock is removed only through the forms.
+- **Reservations** (`/api/reservations/template`): `Material_Code` · `From` · `Quantity_Requested` ·
+  `Project_Name` · `Purpose_Notes`.
 
 ### Roles
 
 | Role | Can |
 |---|---|
 | Administrator | Everything, including accounts |
-| Factory Manager | Change Factory items; see everything |
-| Nobox Manager | Change Nobox items; see everything |
-| Designer | Reserve stock; cancel their own reservations |
+| Factory Manager / Nobox Manager | The inventory team for that side: addition, issue, adjustment, materials |
+| Designer | The Reservation Form; cancel their own reservations |
 
-Browsing the inventory needs no account. Everything else does, and the rules are
-enforced by every API route, not only hidden in the UI.
+As in the workbook's governance model, designers only reserve, and logs are never
+edited: every correction is a new adjustment.
 
 ## Running it
 
@@ -105,6 +104,7 @@ Open http://localhost:3000.
 | `npm run db:migrate` | Apply everything in `scripts/sql/`, tracked in `_migrations` |
 | `npm run db:seed` | Demo accounts, items on both sides and two open reservations (empty database only) |
 | `npm run db:reset` | **Drops the public schema.** Follow with `db:migrate` |
+| `npm run db:import-workbook -- "<file.xlsx>" [--commit]` | Load the TRT inventory workbook (see above) |
 | `npm run db:user -- <email> <password> "<name>" [ROLE]` | Create or update one account. `ROLE` is `ADMIN`, `FACTORY_MANAGER`, `NOBOX_MANAGER` or `DESIGNER`. |
 
 ### Demo accounts

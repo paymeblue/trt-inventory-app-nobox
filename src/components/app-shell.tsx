@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, X, ChevronDown, LayoutGrid, Factory, Store, Users, ClipboardList, LogIn } from "lucide-react";
+import { LogOut, Menu, X, ChevronDown, LayoutGrid, Factory, Store, Users, ClipboardList, LogIn, ScrollText } from "lucide-react";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme";
 import { canManage, canManageUsers, homeFor, ROLE_LABELS, type Role } from "@/lib/rbac";
@@ -22,6 +22,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/inventory", label: "Inventory", icon: LayoutGrid, allowed: () => true },
   { href: "/reservations", label: "Reservations", icon: ClipboardList, allowed: (r) => r !== null },
+  { href: "/logs", label: "Logs", icon: ScrollText, allowed: (r) => r !== null },
   { href: "/factory", label: "Factory", icon: Factory, allowed: (r) => canManage(r, "FACTORY") },
   { href: "/nobox", label: "Nobox", icon: Store, allowed: (r) => canManage(r, "NOBOX") },
   { href: "/users", label: "Team", icon: Users, allowed: canManageUsers },

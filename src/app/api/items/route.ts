@@ -2,15 +2,18 @@ import { query, transaction } from "@/lib/db";
 import { getSession, requireManager } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
 import { isSource } from "@/lib/rbac";
-import { ensureCategory, ITEM_COLUMNS, ITEM_FROM, parseItemBody, recordMovement, RESERVED_SQL } from "@/lib/items";
+import { AVAILABLE_SQL, ensureCategory, ITEM_COLUMNS, ITEM_FROM, parseItemBody, recordMovement, RESERVED_SQL, STATUS_SQL } from "@/lib/items";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** In stock minus reserved. Stock levels are judged on this, not on the raw count. */
-const AVAILABLE = `(i.quantity - ${RESERVED_SQL})`;
+const AVAILABLE = AVAILABLE_SQL;
+
+/** Filter values → the workbook's Reorder_Status. */
+const STATUS_FILTER: Record<string, string> = { ok: "OK", low: "LOW", reorder: "REORDER NOW", out: "OUT OF STOCK" };
 
 const SORTS: Record<string, string> = {
+  code: "i.sku",
   name: "lower(i.name) ASC, i.sku",
   "qty-desc": `${AVAILABLE} DESC, lower(i.name)`,
   "qty-asc": `${AVAILABLE} ASC, lower(i.name)`,
@@ -47,16 +50,20 @@ export const GET = handle(async (req: Request) => {
     const n = params.length;
     where.push(
       `(lower(i.name) LIKE $${n} OR lower(i.sku) LIKE $${n} OR lower(coalesce(i.colour,'')) LIKE $${n}
-        OR lower(coalesce(i.spec,'')) LIKE $${n} OR lower(coalesce(i.category,'')) LIKE $${n})`,
+        OR lower(coalesce(i.spec,'')) LIKE $${n} OR lower(coalesce(i.category,'')) LIKE $${n}
+        OR lower(coalesce(i.subcategory,'')) LIKE $${n} OR lower(coalesce(i.dimensions,'')) LIKE $${n}
+        OR lower(i.sku || ' | ' || i.name) LIKE $${n})`,
     );
   }
   if (category) {
     params.push(category);
     where.push(`i.category = $${params.length}`);
   }
-  if (status === "out") where.push(`${AVAILABLE} <= 0`);
-  if (status === "low") where.push(`${AVAILABLE} > 0 AND i.reorder_level > 0 AND ${AVAILABLE} <= i.reorder_level`);
-  if (status === "ok") where.push(`${AVAILABLE} > 0 AND (i.reorder_level = 0 OR ${AVAILABLE} > i.reorder_level)`);
+  if (status && STATUS_FILTER[status]) {
+    params.push(STATUS_FILTER[status]);
+    where.push(`(${STATUS_SQL}) = $${params.length}`);
+  }
+  if (status === "attention") where.push(`(${STATUS_SQL}) IN ('LOW','REORDER NOW','OUT OF STOCK')`);
   if (status === "reserved") where.push(`${RESERVED_SQL} > 0`);
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
@@ -77,12 +84,12 @@ export const GET = handle(async (req: Request) => {
     ),
     // Factory and Nobox totals are always group-wide (they label the source
     // tabs); low and out follow the source being viewed.
-    query<{ factory: number; nobox: number; low: number; out: number; reserved: number }>(
+    query<{ factory: number; nobox: number; low: number; reorder: number; out: number; reserved: number }>(
       `SELECT COUNT(*) FILTER (WHERE i.source = 'FACTORY')::int AS factory,
               COUNT(*) FILTER (WHERE i.source = 'NOBOX')::int AS nobox,
-              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1)
-                AND ${AVAILABLE} > 0 AND i.reorder_level > 0 AND ${AVAILABLE} <= i.reorder_level)::int AS low,
-              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND ${AVAILABLE} <= 0)::int AS out,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND (${STATUS_SQL}) = 'LOW')::int AS low,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND (${STATUS_SQL}) = 'REORDER NOW')::int AS reorder,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND (${STATUS_SQL}) = 'OUT OF STOCK')::int AS out,
               COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND ${RESERVED_SQL} > 0)::int AS reserved
          FROM items i`,
       [isSource(source) ? source : null],
@@ -107,20 +114,20 @@ export const POST = handle(async (req: Request) => {
 
   const fields = parseItemBody(body, { creating: true });
   const quantity = Number(body.quantity ?? 0);
-  if (!Number.isFinite(quantity) || quantity < 0) return fail(400, "Starting quantity must be 0 or more.");
+  if (!Number.isFinite(quantity) || quantity < 0) return fail(400, "Opening quantity must be 0 or more.");
 
   const item = await transaction(async (client) => {
     const category = await ensureCategory(client, source, fields.category, session.sub);
     const { rows } = await client.query<{ id: string }>(
-      `INSERT INTO items (source, sku, name, category, colour, spec, unit, quantity, reorder_level,
-                          description, image_id, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12) RETURNING id`,
-      [source, fields.sku, fields.name, category, fields.colour, fields.spec,
-       fields.unit ?? "pcs", quantity, fields.reorderLevel ?? 0, fields.description,
+      `INSERT INTO items (source, sku, name, category, subcategory, spec, dimensions, colour, unit, opening_qty, quantity,
+                          reorder_level, reorder_quantity, description, image_id, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$15) RETURNING id`,
+      [source, fields.sku, fields.name, category, fields.subcategory, fields.spec, fields.dimensions, fields.colour,
+       fields.unit ?? "Unit", quantity, fields.reorderLevel ?? 0, fields.reorderQuantity ?? 0, fields.description,
        fields.imageId, session.sub],
     );
     await recordMovement(client, {
-      itemId: rows[0].id, source, kind: "CREATE", delta: quantity, balance: quantity, userId: session.sub,
+      itemId: rows[0].id, source, kind: "OPENING", delta: quantity, balance: quantity, note: "Opening_Qty", userId: session.sub,
     });
     return rows[0];
   });

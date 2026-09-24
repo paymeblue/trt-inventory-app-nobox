@@ -1,5 +1,5 @@
 import { query, transaction } from "@/lib/db";
-import { requireSession } from "@/lib/session";
+import { personOf, requireSession } from "@/lib/session";
 import { handle, ok, readJson } from "@/lib/api";
 import { isSource } from "@/lib/rbac";
 import { createReservation, RESERVATION_COLUMNS, RESERVATION_FROM } from "@/lib/reservations";
@@ -19,7 +19,9 @@ export const GET = handle(async (req: Request) => {
   };
 
   const status = p.get("status");
-  if (status && ["RESERVED", "ISSUED", "CANCELLED"].includes(status)) add((n) => `r.status = $${n}`, status);
+  // "OPEN" = still holding stock: reserved, or issued in part.
+  if (status === "OPEN") where.push("r.status IN ('RESERVED','PART_ISSUED')");
+  else if (status && ["RESERVED", "PART_ISSUED", "ISSUED", "CANCELLED"].includes(status)) add((n) => `r.status = $${n}`, status);
   const source = p.get("source");
   if (isSource(source)) add((n) => `r.source = $${n}`, source);
   const item = p.get("item");
@@ -29,7 +31,8 @@ export const GET = handle(async (req: Request) => {
   if (q) {
     add(
       (n) => `(lower(r.ref) LIKE $${n} OR lower(r.project) LIKE $${n} OR lower(i.name) LIKE $${n}
-               OR lower(i.sku) LIKE $${n} OR lower(coalesce(ru.full_name,'')) LIKE $${n})`,
+               OR lower(i.sku) LIKE $${n} OR lower(coalesce(ru.full_name, r.designer_name, '')) LIKE $${n}
+               OR lower(coalesce(r.designer_email,'')) LIKE $${n})`,
       `%${q.toLowerCase()}%`,
     );
   }
@@ -41,7 +44,7 @@ export const GET = handle(async (req: Request) => {
   const [items, totals, counts] = await Promise.all([
     query(
       `SELECT ${RESERVATION_COLUMNS} ${RESERVATION_FROM} ${whereSql}
-        ORDER BY (r.status = 'RESERVED') DESC, r.created_at DESC
+        ORDER BY (r.status IN ('RESERVED','PART_ISSUED')) DESC, r.created_at DESC
         LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`,
       params,
     ),
@@ -60,7 +63,7 @@ export const POST = handle(async (req: Request) => {
     createReservation(
       client,
       { itemId: String(body.itemId ?? ""), quantity: Number(body.quantity), project: String(body.project ?? ""), notes: body.notes },
-      session.sub,
+      personOf(session),
     ),
   );
   return ok(created, { status: 201 });

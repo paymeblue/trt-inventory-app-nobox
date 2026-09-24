@@ -7,7 +7,7 @@ import { SearchInput, useDebounced } from "@/components/search-input";
 
 export type FilterState = { search: string; category: string; status: string; sort: string };
 
-export const EMPTY_FILTERS: FilterState = { search: "", category: "", status: "", sort: "name" };
+export const EMPTY_FILTERS: FilterState = { search: "", category: "", status: "", sort: "code" };
 
 /** Filter state plus the debounced query parameters to send to /api/items. */
 export function useFilters() {
@@ -39,7 +39,7 @@ export function ItemFilters({
       <SearchInput
         value={filters.search}
         onChange={(search) => onChange({ ...filters, search })}
-        placeholder="Search name, SKU, colour, spec…"
+        placeholder="Search code, name, subcategory, spec…"
         className="lg:flex-1"
       />
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:flex lg:shrink-0">
@@ -50,12 +50,16 @@ export function ItemFilters({
           ))}
         </Select>
         <Select value={filters.status} onChange={set("status")} aria-label="Stock status" className="lg:w-40">
-          <option value="">Any stock level</option>
-          <option value="ok">In stock</option>
-          <option value="low">Low stock</option>
-          <option value="out">Out of stock</option>
+          <option value="">Any status</option>
+          <option value="ok">OK</option>
+          <option value="low">LOW</option>
+          <option value="reorder">REORDER NOW</option>
+          <option value="out">OUT OF STOCK</option>
+          <option value="attention">Low Stock SKUs (all three)</option>
+          <option value="reserved">Has reservations</option>
         </Select>
         <Select value={filters.sort} onChange={set("sort")} aria-label="Sort" className="col-span-2 sm:col-span-1 lg:w-44">
+          <option value="code">Material Code</option>
           <option value="name">Name A–Z</option>
           <option value="qty-desc">Most in stock</option>
           <option value="qty-asc">Least in stock</option>

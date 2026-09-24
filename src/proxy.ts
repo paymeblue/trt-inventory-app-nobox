@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 
 /** Anyone may browse /inventory. These always need someone signed in. */
-const PROTECTED = ["/reservations", "/factory", "/nobox", "/users"];
+const PROTECTED = ["/reservations", "/logs", "/factory", "/nobox", "/users"];
 
 /**
  * Verifies the session token before a page renders. A stale or tampered cookie
@@ -37,6 +37,7 @@ export const config = {
     "/login",
     "/inventory/:path*",
     "/reservations/:path*",
+    "/logs/:path*",
     "/factory/:path*",
     "/nobox/:path*",
     "/users/:path*",

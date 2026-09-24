@@ -44,6 +44,9 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
          name = COALESCE($2, name),
          category = CASE WHEN $3 THEN NULLIF($4, '') ELSE category END,
          colour = CASE WHEN $5 THEN NULLIF($6, '') ELSE colour END,
+         subcategory = CASE WHEN $17 THEN NULLIF($18, '') ELSE subcategory END,
+         dimensions = CASE WHEN $19 THEN NULLIF($20, '') ELSE dimensions END,
+         reorder_quantity = COALESCE($21, reorder_quantity),
          spec = CASE WHEN $7 THEN NULLIF($8, '') ELSE spec END,
          unit = COALESCE($9, unit),
          reorder_level = COALESCE($10, reorder_level),
@@ -54,7 +57,8 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
        WHERE id = $16 RETURNING id`,
       [f.sku, f.name, has("category"), category ?? "", has("colour"), f.colour ?? "",
        has("spec"), f.spec ?? "", f.unit, f.reorderLevel, has("description"), f.description ?? "",
-       has("imageId"), f.imageId, session.sub, id],
+       has("imageId"), f.imageId, session.sub, id,
+       has("subcategory"), f.subcategory ?? "", has("dimensions"), f.dimensions ?? "", f.reorderQuantity],
     );
     return rows[0];
   });

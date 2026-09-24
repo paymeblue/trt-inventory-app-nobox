@@ -4,7 +4,8 @@ import { Bookmark } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product-image";
-import { SourceBadge, StockStatus } from "@/components/status";
+import { SourceBadge } from "@/components/status";
+import { ReorderBadge } from "@/components/forms/form-parts";
 import { useSession } from "@/components/session-context";
 import { useOpenReservations } from "@/components/reservations/reserve-modal";
 import { qty, relativeTime } from "@/lib/utils";
@@ -14,12 +15,13 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
   const session = useSession();
   const reservations = useOpenReservations(item.id, Boolean(session) && item.reserved > 0);
   const rows: [string, string | null][] = [
-    ["SKU", item.sku],
+    ["Material Code", item.sku],
     ["Category", item.category],
-    ["Colour", item.colour],
+    ["Subcategory", item.subcategory],
     ["Specification", item.spec],
+    ["Dimensions", item.dimensions],
     ["Unit", item.unit],
-    ["Reorder level", item.reorder_level ? qty(item.reorder_level) : null],
+    ["Reorder Level", item.reorder_level ? qty(item.reorder_level) : null],
     ["Last changed", `${relativeTime(item.updated_at)}${item.updated_by_name ? ` by ${item.updated_by_name}` : ""}`],
   ];
 
@@ -43,7 +45,7 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <SourceBadge source={item.source} />
-            <StockStatus onHand={item.available} reorder={item.reorder_level} />
+            <ReorderBadge status={item.reorder_status} />
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2">
             {([
@@ -61,7 +63,7 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
             {rows.map(([label, value]) => (
               <div key={label} className="flex items-baseline justify-between gap-3">
                 <dt className="shrink-0 text-fg-muted">{label}</dt>
-                <dd className={label === "SKU" ? "code truncate text-right" : "truncate text-right font-medium"}>{value || "—"}</dd>
+                <dd className={label === "Material Code" ? "code truncate text-right" : "truncate text-right font-medium"}>{value || "—"}</dd>
               </div>
             ))}
           </dl>

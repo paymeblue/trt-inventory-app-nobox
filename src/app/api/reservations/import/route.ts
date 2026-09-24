@@ -1,5 +1,5 @@
 import { transaction } from "@/lib/db";
-import { requireSession } from "@/lib/session";
+import { personOf, requireSession } from "@/lib/session";
 import { fail, handle, ok } from "@/lib/api";
 import { importReservations } from "@/lib/reservation-template";
 
@@ -16,7 +16,7 @@ export const POST = handle(async (req: Request) => {
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const result = await transaction((client) =>
-    importReservations(client, buffer, { userId: session.sub, commit: form.get("commit") === "1" }),
+    importReservations(client, buffer, { who: personOf(session), commit: form.get("commit") === "1" }),
   );
   return ok({ filename: file.name, ...result });
 });

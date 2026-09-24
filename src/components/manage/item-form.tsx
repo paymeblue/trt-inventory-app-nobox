@@ -11,7 +11,7 @@ import { apiFetch } from "@/lib/client";
 import { SOURCE_LABELS, type Source } from "@/lib/rbac";
 import { slugToSku } from "@/lib/utils";
 
-const UNITS = ["pcs", "sheet", "board", "m", "m²", "kg", "litre", "roll", "pack", "set", "carton"];
+const UNITS = ["Sheet", "Pcs", "Unit", "Slab", "m", "kg", "litre", "roll", "pack", "set"];
 
 export function ItemForm({
   source,
@@ -32,10 +32,12 @@ export function ItemForm({
     sku: item?.sku ?? "",
     name: item?.name ?? "",
     category: item?.category ?? "",
-    colour: item?.colour ?? "",
+    subcategory: item?.subcategory ?? "",
     spec: item?.spec ?? "",
-    unit: item?.unit ?? "pcs",
+    dimensions: item?.dimensions ?? "",
+    unit: item?.unit ?? "Unit",
     reorderLevel: item ? String(item.reorder_level) : "",
+    reorderQuantity: item ? String(item.reorder_quantity) : "",
     description: item?.description ?? "",
     quantity: "0",
   });
@@ -62,8 +64,10 @@ export function ItemForm({
       sku: form.sku,
       name: form.name,
       category: form.category === NEW ? newCategory : form.category,
-      colour: form.colour,
+      subcategory: form.subcategory,
       spec: form.spec,
+      dimensions: form.dimensions,
+      reorderQuantity: form.reorderQuantity || 0,
       unit: form.unit,
       reorderLevel: form.reorderLevel || 0,
       description: form.description,
@@ -93,8 +97,8 @@ export function ItemForm({
       open
       onClose={onClose}
       size="lg"
-      title={editing ? `Edit ${item!.name}` : `New ${SOURCE_LABELS[source]} item`}
-      description={editing ? "Change the details. Use Adjust to change the quantity." : undefined}
+      title={editing ? `Edit ${item!.sku}` : `New ${SOURCE_LABELS[source]} material`}
+      description={editing ? "Change the details. Quantities change only through Stock Addition, Issue and Adjustment." : undefined}
       footer={
         <>
           <Button variant="ghost" type="button" onClick={onClose}>Cancel</Button>
@@ -112,10 +116,10 @@ export function ItemForm({
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-[180px_1fr]">
           <ImageUpload value={imageId} onChange={setImageId} />
           <div className="space-y-3">
-            <Field label="Name">
-              <Input required value={form.name} onChange={set("name")} placeholder="18mm White Melamine Board" />
+            <Field label="Material Name">
+              <Input required value={form.name} onChange={set("name")} placeholder="LISSA OAK 18MM" />
             </Field>
-            <Field label="SKU">
+            <Field label="Material Code">
               <Input
                 required
                 value={form.sku}
@@ -123,13 +127,13 @@ export function ItemForm({
                   skuTouched.current = true;
                   set("sku")(e);
                 }}
-                placeholder="MEL-18-WHT"
+                placeholder="FINSA 116"
                 className="code"
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               {!editing ? (
-                <Field label="Quantity in stock now">
+                <Field label="Opening Qty">
                   <Input
                     type="number" min="0" step="any" inputMode="decimal" required
                     value={form.quantity} onChange={set("quantity")} onFocus={(e) => e.target.select()}
@@ -164,13 +168,19 @@ export function ItemForm({
               />
             ) : null}
           </Field>
-          <Field label="Colour / finish">
-            <Input value={form.colour} onChange={set("colour")} placeholder="White gloss" />
+          <Field label="Subcategory">
+            <Input value={form.subcategory} onChange={set("subcategory")} placeholder="FINSA (MEASURED IN SHEETS)" />
           </Field>
           <Field label="Specification">
-            <Input value={form.spec} onChange={set("spec")} placeholder="2440 × 1220 × 18mm" />
+            <Input value={form.spec} onChange={set("spec")} placeholder="18MM" />
           </Field>
-          <Field label="Reorder level" hint="flag as low at or below">
+          <Field label="Dimensions">
+            <Input value={form.dimensions} onChange={set("dimensions")} placeholder="60 X 60" />
+          </Field>
+          <Field label="Reorder Quantity" hint="suggested order">
+            <Input type="number" min="0" step="any" inputMode="decimal" value={form.reorderQuantity} onChange={set("reorderQuantity")} placeholder="0" className="tabular" />
+          </Field>
+          <Field label="Reorder Level" hint="REORDER NOW at or below">
             <Input
               type="number" min="0" step="any" inputMode="decimal"
               value={form.reorderLevel} onChange={set("reorderLevel")} placeholder="0" className="tabular"
