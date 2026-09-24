@@ -1,48 +1,36 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE } from "@/lib/auth";
+import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 
 /**
- * Cheap cookie-presence gate so unauthenticated users never render the shell.
- * The signature itself is verified server-side in `getSession()`.
+ * Keeps signed-out users out of the app shell. The token is verified here, not
+ * just checked for presence, so a stale or tampered cookie is cleared instead of
+ * bouncing between /login and the app.
  *
  * Next 16 renamed the middleware convention to `proxy`.
  */
-export function proxy(req: NextRequest) {
-  const hasCookie = Boolean(req.cookies.get(SESSION_COOKIE)?.value);
+export async function proxy(req: NextRequest) {
+  const token = req.cookies.get(SESSION_COOKIE)?.value;
+  const session = token ? await verifySession(token) : null;
   const { pathname, search } = req.nextUrl;
 
   if (pathname === "/login") {
-    if (hasCookie) return NextResponse.redirect(new URL("/dashboard", req.url));
-    return NextResponse.next();
+    if (session) return NextResponse.redirect(new URL("/", req.url));
+    const res = NextResponse.next();
+    if (token) res.cookies.delete(SESSION_COOKIE);
+    return res;
   }
 
-  if (!hasCookie) {
+  if (!session) {
     const url = new URL("/login", req.url);
     if (pathname !== "/") url.searchParams.set("next", pathname + search);
-    return NextResponse.redirect(url);
+    const res = NextResponse.redirect(url);
+    if (token) res.cookies.delete(SESSION_COOKIE);
+    return res;
   }
 
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    "/dashboard/:path*",
-    "/flows/:path*",
-    "/runs/:path*",
-    "/products/:path*",
-    "/stock/:path*",
-    "/movements/:path*",
-    "/alerts/:path*",
-    "/import/:path*",
-    "/requisitions/:path*",
-    "/receipts/:path*",
-    "/projects/:path*",
-    "/suppliers/:path*",
-    "/locations/:path*",
-    "/users/:path*",
-    "/reports/:path*",
-    "/settings/:path*",
-    "/login",
-  ],
+  matcher: ["/", "/inventory/:path*", "/factory/:path*", "/nobox/:path*", "/users/:path*", "/login"],
 };

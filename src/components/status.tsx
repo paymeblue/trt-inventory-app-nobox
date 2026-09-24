@@ -1,34 +1,10 @@
+"use client";
+
+import * as React from "react";
+import { Factory, Store } from "lucide-react";
 import { Badge } from "./ui/badge";
-
-const REQUISITION_TONES = {
-  DRAFT: "neutral",
-  SUBMITTED: "info",
-  APPROVED: "accent",
-  REJECTED: "danger",
-  ISSUED: "warn",
-  RECEIVED: "ok",
-  CLOSED: "ok",
-  CANCELLED: "neutral",
-} as const;
-
-export function RequisitionStatus({ status }: { status: string }) {
-  const tone = REQUISITION_TONES[status as keyof typeof REQUISITION_TONES] ?? "neutral";
-  return <Badge tone={tone} dot>{status.toLowerCase()}</Badge>;
-}
-
-const PROJECT_TONES = {
-  PLANNING: "info",
-  IN_PRODUCTION: "accent",
-  INSTALLATION: "warn",
-  COMPLETED: "ok",
-  ON_HOLD: "neutral",
-  CANCELLED: "danger",
-} as const;
-
-export function ProjectStatus({ status }: { status: string }) {
-  const tone = PROJECT_TONES[status as keyof typeof PROJECT_TONES] ?? "neutral";
-  return <Badge tone={tone} dot>{status.replace(/_/g, " ").toLowerCase()}</Badge>;
-}
+import { SOURCE_LABELS, type Source } from "@/lib/rbac";
+import { cn } from "@/lib/utils";
 
 export function StockStatus({ onHand, reorder }: { onHand: number; reorder: number }) {
   if (onHand <= 0) return <Badge tone="danger" dot>out of stock</Badge>;
@@ -36,22 +12,42 @@ export function StockStatus({ onHand, reorder }: { onHand: number; reorder: numb
   return <Badge tone="ok" dot>in stock</Badge>;
 }
 
-const MOVEMENT_TONES = {
-  RECEIPT: "ok",
-  OPENING: "info",
-  RETURN: "ok",
-  ISSUE: "warn",
-  TRANSFER: "info",
-  ADJUSTMENT: "accent",
-  WASTE: "danger",
-} as const;
+const SOURCE_ICONS = { FACTORY: Factory, NOBOX: Store } as const;
 
-export function MovementBadge({ type }: { type: string }) {
-  const tone = MOVEMENT_TONES[type as keyof typeof MOVEMENT_TONES] ?? "neutral";
-  return <Badge tone={tone}>{type.toLowerCase()}</Badge>;
+/** Factory items read amber, Nobox items read blue, everywhere in the app. */
+export function SourceBadge({ source, className }: { source: Source; className?: string }) {
+  const Icon = SOURCE_ICONS[source];
+  return (
+    <Badge tone={source === "FACTORY" ? "accent" : "info"} className={className}>
+      <Icon className="h-3 w-3" />
+      {SOURCE_LABELS[source]}
+    </Badge>
+  );
 }
 
-export function ReceiptStatus({ status }: { status: string }) {
-  const tone = status === "POSTED" ? "ok" : status === "CANCELLED" ? "danger" : "neutral";
-  return <Badge tone={tone} dot>{status.toLowerCase()}</Badge>;
+/** "Live · 4s ago", ticking, so a designer can trust what they are looking at. */
+export function LiveIndicator({ syncedAt, error }: { syncedAt: number | null; error?: string | null }) {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const seconds = syncedAt ? Math.max(0, Math.round((now - syncedAt) / 1000)) : null;
+  const stale = error || (seconds !== null && seconds > 45);
+  const label =
+    seconds === null ? "Connecting…" : seconds < 5 ? "Live · just now" : seconds < 60 ? `Live · ${seconds}s ago` : `Last update ${Math.round(seconds / 60)}m ago`;
+
+  return (
+    <span
+      className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-[12px] font-medium text-fg-muted"
+      title={error ?? "Refreshes every 10 seconds"}
+    >
+      <span className="relative flex h-2 w-2">
+        {!stale ? <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-60" /> : null}
+        <span className={cn("relative inline-flex h-2 w-2 rounded-full", stale ? "bg-warn" : "bg-ok")} />
+      </span>
+      {error ? "Reconnecting…" : label}
+    </span>
+  );
 }

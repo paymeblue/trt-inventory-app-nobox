@@ -19,7 +19,11 @@ export function handle<Args extends unknown[]>(
     } catch (err) {
       if (err instanceof HttpError) return fail(err.status, err.message);
       const pg = err as { code?: string; constraint?: string; message?: string };
-      if (pg?.code === "23505") return fail(409, "That record already exists.");
+      if (pg?.code === "23505") {
+        return fail(409, pg.constraint === "items_source_sku_key"
+          ? "An item with that SKU already exists in this inventory."
+          : "That record already exists.");
+      }
       if (pg?.code === "23503") {
         // Distinguish "you pointed at something that is gone" from "something
         // else still points at this" — they need very different fixes.

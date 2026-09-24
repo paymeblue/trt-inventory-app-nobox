@@ -27,6 +27,17 @@ const SIZES: Record<Size, string> = {
   icon: "h-9 w-9 rounded-lg",
 };
 
+/** Button styling for elements that must not be a <button>, such as a download link. */
+export function buttonClass(variant: Variant = "primary", size: Size = "md", className?: string) {
+  return cn(
+    "inline-flex select-none items-center justify-center whitespace-nowrap font-medium",
+    "transition-all duration-150 disabled:pointer-events-none disabled:opacity-45",
+    VARIANTS[variant],
+    SIZES[size],
+    className,
+  );
+}
+
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   size?: Size;
@@ -38,13 +49,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     <button
       ref={ref}
       disabled={disabled || loading}
-      className={cn(
-        "inline-flex select-none items-center justify-center whitespace-nowrap font-medium",
-        "transition-all duration-150 disabled:pointer-events-none disabled:opacity-45",
-        VARIANTS[variant],
-        SIZES[size],
-        className,
-      )}
+      className={buttonClass(variant, size, className)}
       {...props}
     >
       {loading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : null}

@@ -41,10 +41,6 @@ export const POST = handle(async (req: Request) => {
   });
 
   await query("UPDATE users SET last_login_at = now() WHERE id = $1", [user.id]);
-  await query(
-    "INSERT INTO activity_log (user_id, action, entity, entity_id, detail) VALUES ($1,'SIGN_IN','user',$1,$2)",
-    [user.id, user.email],
-  );
 
   const res = NextResponse.json({
     user: { id: user.id, email: user.email, name: user.full_name, role: user.role },

@@ -12,8 +12,7 @@ import { EmptyState } from "@/components/ui/empty";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { SearchInput } from "@/components/search-input";
-import { usePermission, useSession } from "@/components/session-context";
-import { useLookups } from "@/lib/lookups";
+import { useSession } from "@/components/session-context";
 import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS, type Role } from "@/lib/rbac";
 import { apiFetch } from "@/lib/client";
 import { initials, relativeTime } from "@/lib/utils";
@@ -21,18 +20,15 @@ import { initials, relativeTime } from "@/lib/utils";
 type Row = {
   id: string; email: string; full_name: string; role: Role; phone: string | null;
   is_active: boolean; last_login_at: string | null; created_at: string;
-  location_name: string | null; location_id: string | null;
 };
 
 const EMPTY = {
-  fullName: "", email: "", password: "", role: "VIEWER" as Role, phone: "", locationId: "",
+  fullName: "", email: "", password: "", role: "DESIGNER" as Role, phone: "",
 };
 
 export function UsersView() {
-  const may = usePermission();
   const me = useSession();
   const toast = useToast();
-  const { locations } = useLookups();
 
   const [items, setItems] = React.useState<Row[] | null>(null);
   const [search, setSearch] = React.useState("");
@@ -61,7 +57,6 @@ export function UsersView() {
           fullName: form.fullName,
           role: form.role,
           phone: form.phone || null,
-          locationId: form.locationId || null,
         };
         if (form.password) payload.password = form.password;
         await apiFetch(`/api/users/${editing.id}`, { method: "PATCH", body: JSON.stringify(payload) });
@@ -106,7 +101,7 @@ export function UsersView() {
         title="Team"
         description="Who can sign in, and what each role is allowed to do."
         action={
-          may("user:write") ? (
+          (
             <Button
               onClick={() => {
                 setForm(EMPTY);
@@ -116,7 +111,7 @@ export function UsersView() {
             >
               <Plus className="h-4 w-4" /> Add person
             </Button>
-          ) : null
+          )
         }
       />
 
@@ -139,10 +134,9 @@ export function UsersView() {
               <tr>
                 <Th>Person</Th>
                 <Th>Role</Th>
-                <Th className="hidden lg:table-cell">Based at</Th>
                 <Th align="right" className="hidden md:table-cell">Last seen</Th>
                 <Th align="center">Status</Th>
-                {may("user:write") ? <Th align="right">Actions</Th> : null}
+                <Th align="right">Actions</Th>
               </tr>
             </thead>
             <tbody>
@@ -165,47 +159,41 @@ export function UsersView() {
                   <Td>
                     <span className="text-[13px]">{ROLE_LABELS[u.role]}</span>
                   </Td>
-                  <Td className="hidden text-[12.5px] text-fg-muted lg:table-cell">
-                    {u.location_name ?? "—"}
-                  </Td>
                   <Td align="right" className="hidden whitespace-nowrap text-[12px] text-fg-subtle md:table-cell">
                     {u.last_login_at ? relativeTime(u.last_login_at) : "never"}
                   </Td>
                   <Td align="center">
                     {u.is_active ? <Badge tone="ok" dot>active</Badge> : <Badge tone="danger" dot>disabled</Badge>}
                   </Td>
-                  {may("user:write") ? (
-                    <Td align="right">
-                      <div className="flex items-center justify-end gap-1">
+                  <Td align="right">
+                    <div className="flex items-center justify-end gap-1">
+                      <button
+                        onClick={() => {
+                          setForm({
+                            fullName: u.full_name,
+                            email: u.email,
+                            password: "",
+                            role: u.role,
+                            phone: u.phone ?? "",
+                          });
+                          setError(null);
+                          setEditing(u);
+                        }}
+                        className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
+                        aria-label={`Edit ${u.full_name}`}
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      {u.id !== me.sub ? (
                         <button
-                          onClick={() => {
-                            setForm({
-                              fullName: u.full_name,
-                              email: u.email,
-                              password: "",
-                              role: u.role,
-                              phone: u.phone ?? "",
-                              locationId: u.location_id ?? "",
-                            });
-                            setError(null);
-                            setEditing(u);
-                          }}
-                          className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
-                          aria-label={`Edit ${u.full_name}`}
+                          onClick={() => toggleActive(u)}
+                          className="rounded-lg px-2 py-1.5 text-[12px] font-medium text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
                         >
-                          <Pencil className="h-3.5 w-3.5" />
+                          {u.is_active ? "Disable" : "Enable"}
                         </button>
-                        {u.id !== me.sub ? (
-                          <button
-                            onClick={() => toggleActive(u)}
-                            className="rounded-lg px-2 py-1.5 text-[12px] font-medium text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
-                          >
-                            {u.is_active ? "Disable" : "Enable"}
-                          </button>
-                        ) : null}
-                      </div>
-                    </Td>
-                  ) : null}
+                      ) : null}
+                    </div>
+                  </Td>
                 </Tr>
               ))}
             </tbody>
@@ -216,9 +204,9 @@ export function UsersView() {
       <Card className="mt-3 p-4 sm:p-5">
         <h2 className="text-sm font-semibold tracking-tight">What each role can do</h2>
         <p className="mt-0.5 text-[13px] text-fg-muted">
-          Roles map onto the TRT process flows — permissions follow the responsibilities in each stage.
+          Managers can only change their own side. Designers can see everything but change nothing.
         </p>
-        <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
           {ROLES.map((role) => (
             <div key={role} className="rounded-xl border border-border bg-surface-2/40 p-3">
               <p className="text-[13px] font-semibold">{ROLE_LABELS[role]}</p>
@@ -307,26 +295,15 @@ export function UsersView() {
                 ))}
               </Select>
             </Field>
-            <Field label="Based at">
-              <Select
-                value={form.locationId}
-                onChange={(e) => setForm((f) => ({ ...f, locationId: e.target.value }))}
-              >
-                <option value="">Not assigned</option>
-                {locations.map((l) => (
-                  <option key={l.id} value={l.id}>{l.name}</option>
-                ))}
-              </Select>
+            <Field label="Phone">
+              <Input
+                type="tel"
+                value={form.phone}
+                onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                placeholder="+234…"
+              />
             </Field>
           </div>
-          <Field label="Phone">
-            <Input
-              type="tel"
-              value={form.phone}
-              onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-              placeholder="+234…"
-            />
-          </Field>
         </form>
       </Modal>
     </>

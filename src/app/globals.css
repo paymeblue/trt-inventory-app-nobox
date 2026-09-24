@@ -220,3 +220,10 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* A row whose quantity just changed on another screen. */
+@keyframes flash {
+  from { background-color: var(--accent-soft); }
+  to { background-color: transparent; }
+}
+.animate-flash { animation: flash 2.4s ease-out both; }

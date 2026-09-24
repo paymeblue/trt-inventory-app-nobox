@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { SESSION_COOKIE, verifySession, type SessionPayload } from "./auth";
-import { can, type Permission } from "./rbac";
+import { canManage, canManageUsers, type Source } from "./rbac";
 
 /** Reads and verifies the JWT session cookie. Memoised per request. */
 export const getSession = cache(async (): Promise<SessionPayload | null> => {
@@ -17,11 +17,17 @@ export async function requireSession(): Promise<SessionPayload> {
   return session;
 }
 
-export async function requirePermission(permission: Permission): Promise<SessionPayload> {
+export async function requireManager(source: Source): Promise<SessionPayload> {
   const session = await requireSession();
-  if (!can(session.role, permission)) {
-    throw new HttpError(403, "Your role does not allow this action");
+  if (!canManage(session.role, source)) {
+    throw new HttpError(403, "Your role cannot change this inventory");
   }
+  return session;
+}
+
+export async function requireAdmin(): Promise<SessionPayload> {
+  const session = await requireSession();
+  if (!canManageUsers(session.role)) throw new HttpError(403, "Only an administrator can do that");
   return session;
 }
 

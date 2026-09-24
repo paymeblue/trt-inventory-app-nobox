@@ -9,7 +9,7 @@ import { Field, Input } from "@/components/ui/field";
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/dashboard";
+  const next = params.get("next") || "/";
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");

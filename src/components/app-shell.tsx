@@ -3,26 +3,31 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, X, ChevronDown } from "lucide-react";
-import { NAV, MOBILE_PRIMARY, type NavItem } from "./nav-config";
+import { LogOut, Menu, X, ChevronDown, LayoutGrid, Factory, Store, Users } from "lucide-react";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme";
-import { can, ROLE_LABELS, type Permission, type Role } from "@/lib/rbac";
+import { canManage, canManageUsers, homeFor, ROLE_LABELS, type Role } from "@/lib/rbac";
 import { SessionProvider } from "./session-context";
-import { CompanyScopeProvider, CompanySwitcher } from "./company-scope";
 import { cn, initials } from "@/lib/utils";
 
 type Session = { sub: string; name: string; email: string; role: Role };
 
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  allowed: (role: Role) => boolean;
+};
+
+const NAV: NavItem[] = [
+  { href: "/inventory", label: "Inventory", icon: LayoutGrid, allowed: () => true },
+  { href: "/factory", label: "Factory", icon: Factory, allowed: (r) => canManage(r, "FACTORY") },
+  { href: "/nobox", label: "Nobox", icon: Store, allowed: (r) => canManage(r, "NOBOX") },
+  { href: "/users", label: "Team", icon: Users, allowed: canManageUsers },
+];
+
 function useAllowedNav(role: Role) {
-  return React.useMemo(
-    () =>
-      NAV.map((group) => ({
-        ...group,
-        items: group.items.filter((item) => can(role, item.permission as Permission)),
-      })).filter((group) => group.items.length > 0),
-    [role],
-  );
+  return React.useMemo(() => NAV.filter((item) => item.allowed(role)), [role]);
 }
 
 function isActive(pathname: string, href: string) {
@@ -51,20 +56,11 @@ function NavLink({ item, pathname, onNavigate }: { item: NavItem; pathname: stri
 }
 
 function SidebarContent({ role, pathname, onNavigate }: { role: Role; pathname: string; onNavigate?: () => void }) {
-  const groups = useAllowedNav(role);
+  const items = useAllowedNav(role);
   return (
-    <nav className="scrollbar-thin flex-1 space-y-6 overflow-y-auto px-3 py-4">
-      {groups.map((group) => (
-        <div key={group.title}>
-          <p className="mb-1.5 px-2.5 text-[10.5px] font-semibold uppercase tracking-[0.12em] text-fg-subtle">
-            {group.title}
-          </p>
-          <div className="space-y-0.5">
-            {group.items.map((item) => (
-              <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
-            ))}
-          </div>
-        </div>
+    <nav className="scrollbar-thin flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
+      {items.map((item) => (
+        <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
       ))}
     </nav>
   );
@@ -126,7 +122,8 @@ function UserBlock({ session }: { session: Session }) {
 export function AppShell({ session, children }: { session: Session; children: React.ReactNode }) {
   const pathname = usePathname();
   const [drawer, setDrawer] = React.useState(false);
-  const groups = useAllowedNav(session.role);
+  const bottomItems = useAllowedNav(session.role);
+  const home = homeFor(session.role);
 
   React.useEffect(() => {
     setDrawer(false);
@@ -139,19 +136,13 @@ export function AppShell({ session, children }: { session: Session; children: Re
     };
   }, [drawer]);
 
-  const bottomItems = React.useMemo(() => {
-    const flat = groups.flatMap((g) => g.items);
-    return MOBILE_PRIMARY.map((href) => flat.find((i) => i.href === href)).filter(Boolean).slice(0, 5) as NavItem[];
-  }, [groups]);
-
   return (
     <SessionProvider value={session}>
-    <CompanyScopeProvider>
     <div className="min-h-dvh bg-bg">
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[248px] flex-col border-r border-border bg-bg-subtle lg:flex">
         <div className="px-4 py-4">
-          <Link href="/dashboard">
+          <Link href={home}>
             <Logo />
           </Link>
         </div>
@@ -195,22 +186,22 @@ export function AppShell({ session, children }: { session: Session; children: Re
             <Menu className="h-5 w-5" />
           </button>
 
-          <Link href="/dashboard" className="lg:hidden">
+          <Link href={home} className="lg:hidden">
             <Logo className="[&_p:last-child]:hidden" />
           </Link>
 
           <div className="ml-auto flex items-center gap-2">
-            <CompanySwitcher />
             <ThemeToggle className="hidden sm:inline-flex" />
           </div>
         </header>
 
-        <main className="mx-auto w-full max-w-[1400px] px-3 pb-28 pt-4 sm:px-5 sm:pb-10 sm:pt-6 lg:pb-12">
+        <main className="mx-auto w-full max-w-[1400px] px-3 pb-24 pt-4 sm:px-5 sm:pb-10 sm:pt-6 lg:pb-12">
           {children}
         </main>
       </div>
 
-      {/* Mobile bottom bar */}
+      {/* Mobile bottom bar, only when there is somewhere else to go */}
+      {bottomItems.length > 1 ? (
       <nav className="safe-bottom fixed inset-x-0 bottom-0 z-30 border-t border-border bg-bg/95 backdrop-blur-xl sm:hidden">
         <div className="flex items-stretch">
           {bottomItems.map((item) => {
@@ -225,14 +216,14 @@ export function AppShell({ session, children }: { session: Session; children: Re
                 )}
               >
                 <item.icon className="h-[19px] w-[19px]" />
-                <span className="truncate px-0.5">{item.short ?? item.label}</span>
+                <span className="truncate px-0.5">{item.label}</span>
               </Link>
             );
           })}
         </div>
       </nav>
+      ) : null}
     </div>
-    </CompanyScopeProvider>
     </SessionProvider>
   );
 }

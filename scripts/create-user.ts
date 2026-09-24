@@ -13,14 +13,14 @@ const pool = new Pool({
  * the first administrator on a fresh database, and for resetting a password when
  * nobody can sign in to do it through the UI.
  *
- *   npm run db:user -- <email> <password> "<full name>" [ROLE] [LOCATION_CODE]
+ *   npm run db:user -- <email> <password> "<full name>" [ROLE]
  */
 async function main() {
-  const [email, password, fullName, role = "ADMIN", locationCode] = process.argv.slice(2);
+  const [email, password, fullName, role = "ADMIN"] = process.argv.slice(2);
 
   if (!email || !password || !fullName) {
     console.error(
-      'Usage: npm run db:user -- <email> <password> "<full name>" [ROLE] [LOCATION_CODE]\n' +
+      'Usage: npm run db:user -- <email> <password> "<full name>" [ROLE]\n' +
         `Roles: ${ROLES.join(", ")}`,
     );
     process.exit(1);
@@ -34,32 +34,18 @@ async function main() {
     process.exit(1);
   }
 
-  let locationId: string | null = null;
-  if (locationCode) {
-    const { rows } = await pool.query<{ id: string }>(
-      "SELECT id FROM locations WHERE upper(code) = upper($1)",
-      [locationCode],
-    );
-    if (!rows[0]) {
-      console.error(`No location with code "${locationCode}".`);
-      process.exit(1);
-    }
-    locationId = rows[0].id;
-  }
-
   const hash = await bcrypt.hash(password, 10);
   const { rows } = await pool.query<{ id: string; created: boolean }>(
-    `INSERT INTO users (email, password_hash, full_name, role, location_id)
-          VALUES (lower($1), $2, $3, $4, $5)
+    `INSERT INTO users (email, password_hash, full_name, role)
+          VALUES (lower($1), $2, $3, $4)
      ON CONFLICT (email) DO UPDATE
         SET password_hash = EXCLUDED.password_hash,
             full_name     = EXCLUDED.full_name,
             role          = EXCLUDED.role,
-            location_id   = COALESCE(EXCLUDED.location_id, users.location_id),
             is_active     = true,
             updated_at    = now()
      RETURNING id, (xmax = 0) AS created`,
-    [email, hash, fullName, role, locationId],
+    [email, hash, fullName, role],
   );
 
   console.log(`${rows[0].created ? "Created" : "Updated"} ${email} as ${role}`);

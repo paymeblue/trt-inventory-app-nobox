@@ -1,5 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
-import type { Role } from "./rbac";
+import { isRole, type Role } from "./rbac";
 
 export const SESSION_COOKIE = "trt_session";
 const MAX_AGE_SECONDS = 60 * 60 * 24 * 7; // 7 days
@@ -34,7 +34,8 @@ export async function signSession(payload: SessionPayload): Promise<string> {
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
     const { payload } = await jwtVerify(token, secret());
-    if (!payload.sub) return null;
+    // Tokens issued before the role model changed carry roles that no longer exist.
+    if (!payload.sub || !isRole(String(payload.role))) return null;
     return {
       sub: payload.sub,
       email: String(payload.email ?? ""),

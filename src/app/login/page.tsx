@@ -8,16 +8,16 @@ export const metadata: Metadata = { title: "Sign in" };
 
 const HIGHLIGHTS = [
   {
-    title: "One catalogue, every location",
-    body: "Boards, edge tapes, accessories and consumables — with photos, specs and shelf references — visible to design, production and procurement at the same time.",
+    title: "Everything in one view",
+    body: "Every board, tape, fitting and fabric in the Factory and at Nobox, with photos and specs, labelled by where it sits.",
   },
   {
-    title: "Know before you run out",
-    body: "Reorder thresholds flag low and out-of-stock materials the moment a movement is posted, so procurement starts before the factory floor stalls.",
+    title: "Always current",
+    body: "When a manager adds or uses stock, the designers' screen updates within seconds. Low and out-of-stock items are flagged.",
   },
   {
-    title: "A ledger you can reconcile",
-    body: "Every receipt, issue, transfer, return and adjustment is written to an immutable movement log tied to a project, a document and a person.",
+    title: "Bulk updates from Excel",
+    body: "Managers fill in one template and upload it. The file is checked row by row before anything changes.",
   },
 ];
 
@@ -35,7 +35,7 @@ export default function LoginPage() {
           <div className="w-full max-w-[380px]">
             <h1 className="text-[26px] leading-tight tracking-tight sm:text-[30px]">Sign in</h1>
             <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-              Access the TRT Nobox inventory control system.
+              Access the TRT Nobox inventory.
             </p>
 
             <Suspense fallback={<div className="mt-8 h-64 animate-pulse rounded-xl bg-surface-2" />}>
@@ -45,7 +45,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-[12px] text-fg-subtle">
-          TRT Nobox · Material visibility &amp; stock control
+          TRT Nobox · Inventory
         </p>
       </div>
 
@@ -70,10 +70,10 @@ export default function LoginPage() {
 
         <div className="relative flex h-full flex-col justify-center px-12 xl:px-20">
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-            Built on the TRT process flows
+            Factory · Nobox
           </p>
           <h2 className="max-w-lg text-[32px] leading-[1.15] tracking-tight xl:text-[38px]">
-            From goods received to material issued — one record, one truth.
+            Know what is in stock before you design with it.
           </h2>
 
           <div className="mt-10 max-w-lg space-y-7">
