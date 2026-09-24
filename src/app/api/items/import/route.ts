@@ -2,8 +2,7 @@ import { transaction } from "@/lib/db";
 import { requireManager } from "@/lib/session";
 import { fail, handle, ok } from "@/lib/api";
 import { isSource } from "@/lib/rbac";
-import { applyImport } from "@/lib/items";
-import { parseTemplate } from "@/lib/template";
+import { importStock } from "@/lib/items";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,21 +25,9 @@ export const POST = handle(async (req: Request) => {
   if (file.size > MAX_BYTES) return fail(413, "Spreadsheets must be 10MB or smaller.");
   const commit = form.get("commit") === "1";
 
-  const parsed = parseTemplate(Buffer.from(await file.arrayBuffer()));
-  if (parsed.fatal) return ok({ filename: file.name, applied: false, changes: [], errors: parsed.errors });
-
-  // Well-formed rows are still checked against stock when other rows are
-  // malformed, so the manager sees every problem in the file in one pass.
-  const apply = commit && parsed.errors.length === 0;
+  const buffer = Buffer.from(await file.arrayBuffer());
   const result = await transaction((client) =>
-    applyImport(client, source, parsed.rows, { userId: session.sub, filename: file.name, dryRun: !apply }),
+    importStock(client, source, buffer, { userId: session.sub, filename: file.name, commit }),
   );
-  const errors = [...parsed.errors, ...result.errors].sort((a, b) => (a.row ?? 0) - (b.row ?? 0));
-
-  return ok({
-    filename: file.name,
-    applied: apply && errors.length === 0,
-    changes: errors.length ? [] : result.changes,
-    errors,
-  });
+  return ok({ filename: file.name, ...result });
 });

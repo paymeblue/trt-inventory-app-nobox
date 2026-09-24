@@ -41,7 +41,7 @@ export function LiveIndicator({ syncedAt, error }: { syncedAt: number | null; er
   return (
     <span
       className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-[12px] font-medium text-fg-muted"
-      title={error ?? "Refreshes every 10 seconds"}
+      title={error ?? "Checks for changes every 3 seconds"}
     >
       <span className="relative flex h-2 w-2">
         {!stale ? <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-ok opacity-60" /> : null}

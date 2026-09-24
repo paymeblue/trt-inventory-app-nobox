@@ -8,6 +8,7 @@ export const metadata: Metadata = { title: "Team" };
 
 export default async function UsersPage() {
   const session = await getSession();
-  if (!session || !canManageUsers(session.role)) redirect("/inventory");
+  if (!session) redirect("/login?next=/users");
+  if (!canManageUsers(session.role)) redirect("/inventory");
   return <UsersView />;
 }

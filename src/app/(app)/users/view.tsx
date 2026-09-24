@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/empty";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { SearchInput } from "@/components/search-input";
-import { useSession } from "@/components/session-context";
+import { useRequiredSession } from "@/components/session-context";
 import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS, type Role } from "@/lib/rbac";
 import { apiFetch } from "@/lib/client";
 import { initials, relativeTime } from "@/lib/utils";
@@ -27,7 +27,7 @@ const EMPTY = {
 };
 
 export function UsersView() {
-  const me = useSession();
+  const me = useRequiredSession();
   const toast = useToast();
 
   const [items, setItems] = React.useState<Row[] | null>(null);

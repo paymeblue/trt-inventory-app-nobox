@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import {
-  Boxes, Download, History, Minus, PackageX, Pencil, Plus, Trash2, TriangleAlert, Upload,
+  Boxes, ClipboardList, Download, History, Minus, PackageX, Pencil, Plus, Tags, Trash2, TriangleAlert, Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Button, buttonClass } from "@/components/ui/button";
@@ -18,7 +18,9 @@ import { LiveIndicator, StockStatus } from "@/components/status";
 import { ItemFilters, useFilters } from "@/components/items/filters";
 import { useItems, type Item } from "@/components/items/use-items";
 import { ItemForm } from "./item-form";
-import { AdjustModal } from "./adjust-modal";
+import { AdjustModal, type AdjustMode } from "./adjust-modal";
+import { CategoriesModal } from "./categories-modal";
+import { useReservationAlerts } from "@/components/reservations/use-reservation-alerts";
 import { TEMPLATE_URL, UploadModal } from "./upload-modal";
 import { apiFetch } from "@/lib/client";
 import { SOURCE_LABELS, type Source } from "@/lib/rbac";
@@ -27,7 +29,7 @@ import { cn, qty, relativeTime } from "@/lib/utils";
 const PAGE_SIZE = 50;
 
 type Activity = {
-  id: string; kind: "CREATE" | "ADJUST" | "IMPORT"; delta: number; balance_after: number;
+  id: string; kind: "CREATE" | "ADJUST" | "IMPORT" | "ISSUE"; delta: number; balance_after: number;
   note: string | null; created_at: string; item_id: string; sku: string; name: string; unit: string;
   by_name: string | null;
 };
@@ -37,41 +39,35 @@ export function ManageView({ source }: { source: Source }) {
   const label = SOURCE_LABELS[source];
   const [page, setPage] = React.useState(1);
   const { filters, setFilters, params, active } = useFilters();
-  const { data, loading, error, syncedAt, changed, reload } = useItems({ ...params, source, page, pageSize: PAGE_SIZE });
+  const { data, loading, error, syncedAt, liveAt, changed, reload } = useItems({ ...params, source, page, pageSize: PAGE_SIZE });
 
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<Item | null>(null);
-  const [adjusting, setAdjusting] = React.useState<Item | null>(null);
+  const [adjusting, setAdjusting] = React.useState<{ item: Item; mode: AdjustMode } | null>(null);
+  const [managingCategories, setManagingCategories] = React.useState(false);
+  const [waiting, setWaiting] = React.useState<number | null>(null);
   const [deleting, setDeleting] = React.useState<Item | null>(null);
   const [uploading, setUploading] = React.useState(false);
-  const [pending, setPending] = React.useState<string | null>(null);
   const [activity, setActivity] = React.useState<Activity[] | null>(null);
 
   React.useEffect(() => {
     setPage(1);
   }, [params.q, params.category, params.status]);
 
-  // Follow the item list's refresh cadence so the log never lags the table.
+  // Follow the item list's refresh cadence so the log and the reservation
+  // count never lag the table.
   React.useEffect(() => {
     if (!syncedAt) return;
     apiFetch<{ items: Activity[] }>(`/api/items/activity?source=${source}`)
       .then((d) => setActivity(d.items))
       .catch(() => undefined);
+    apiFetch<{ total: number }>(`/api/reservations?status=RESERVED&source=${source}&pageSize=1`)
+      .then((d) => setWaiting(d.total))
+      .catch(() => undefined);
   }, [syncedAt, source]);
+  useReservationAlerts(syncedAt, source);
 
   const refresh = () => void reload(true);
-
-  async function step(item: Item, delta: number) {
-    setPending(item.id);
-    try {
-      await apiFetch(`/api/items/${item.id}/adjust`, { method: "POST", body: JSON.stringify({ delta }) });
-      await reload(true);
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "Could not update", "error");
-    } finally {
-      setPending(null);
-    }
-  }
 
   async function remove(item: Item) {
     try {
@@ -95,10 +91,13 @@ export function ManageView({ source }: { source: Source }) {
         description={`Add, change and remove ${label} items. Designers see every change within seconds.`}
         action={
           <>
-            <LiveIndicator syncedAt={syncedAt} error={error} />
+            <LiveIndicator syncedAt={liveAt} error={error} />
             <a href={TEMPLATE_URL} className={buttonClass("ghost", "md", "hidden sm:inline-flex")}>
               <Download className="h-4 w-4" /> Template
             </a>
+            <Button variant="ghost" onClick={() => setManagingCategories(true)}>
+              <Tags className="h-4 w-4" /> Categories
+            </Button>
             <Button variant="secondary" onClick={() => setUploading(true)}>
               <Upload className="h-4 w-4" /> Upload Excel
             </Button>
@@ -109,7 +108,10 @@ export function ManageView({ source }: { source: Source }) {
         }
       />
 
-      <div className="mb-3 grid grid-cols-3 gap-2 sm:gap-3">
+      <div className="mb-3 grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
+        <a href="/reservations?status=RESERVED" className="text-left">
+          <StatCard label="Waiting to issue" value={waiting ?? "—"} sub="reservations" icon={ClipboardList} tone={waiting ? "warn" : "neutral"} />
+        </a>
         <button className="text-left" onClick={() => setFilters({ ...filters, status: "" })}>
           <StatCard label="Items" value={total ?? "—"} icon={Boxes} tone={source === "FACTORY" ? "accent" : "info"} />
         </button>
@@ -151,7 +153,7 @@ export function ManageView({ source }: { source: Source }) {
                 <tr>
                   <Th>Item</Th>
                   <Th className="hidden lg:table-cell">Category</Th>
-                  <Th align="center">In stock</Th>
+                  <Th align="right">In stock</Th>
                   <Th align="center" className="hidden md:table-cell">Status</Th>
                   <Th align="right">
                     <span className="sr-only">Actions</span>
@@ -175,39 +177,31 @@ export function ManageView({ source }: { source: Source }) {
                       </div>
                     </Td>
                     <Td className="hidden text-[13px] text-fg-muted lg:table-cell">{item.category ?? "—"}</Td>
-                    <Td align="center">
-                      <div className="inline-flex items-center gap-1">
-                        <button
-                          onClick={() => step(item, -1)}
-                          disabled={pending === item.id || item.quantity < 1}
-                          className="hidden rounded-md border border-border p-1 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40 sm:block"
-                          aria-label={`Remove one ${item.name}`}
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          onClick={() => setAdjusting(item)}
-                          className="whitespace-nowrap rounded-md px-1.5 py-1 transition-colors hover:bg-surface-2 sm:min-w-[4.5rem]"
-                          title="Adjust by any amount"
-                        >
-                          <span className="tabular text-[13.5px] font-semibold">{qty(item.quantity)}</span>
-                          <span className="ml-1 text-[11px] text-fg-subtle">{item.unit}</span>
-                        </button>
-                        <button
-                          onClick={() => step(item, 1)}
-                          disabled={pending === item.id}
-                          className="hidden rounded-md border border-border p-1 text-fg-muted transition-colors hover:bg-surface-2 hover:text-fg disabled:opacity-40 sm:block"
-                          aria-label={`Add one ${item.name}`}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
+                    <Td align="right" className="whitespace-nowrap">
+                      <span className="tabular text-[14px] font-semibold">{qty(item.quantity)}</span>
+                      <span className="ml-1 text-[11px] text-fg-subtle">{item.unit}</span>
+                      {item.reserved > 0 ? (
+                        <span className="tabular block text-[11px] text-warn">{qty(item.reserved)} reserved</span>
+                      ) : null}
                     </Td>
                     <Td align="center" className="hidden md:table-cell">
-                      <StockStatus onHand={item.quantity} reorder={item.reorder_level} />
+                      <StockStatus onHand={item.available} reorder={item.reorder_level} />
                     </Td>
                     <Td align="right">
-                      <div className="flex items-center justify-end gap-0.5">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button size="sm" variant="secondary" onClick={() => setAdjusting({ item, mode: "add" })} aria-label={`Add stock to ${item.name}`}>
+                          <Plus className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Add</span>
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setAdjusting({ item, mode: "deduct" })}
+                          disabled={item.available <= 0}
+                          className="text-danger"
+                          aria-label={`Deduct stock from ${item.name}`}
+                        >
+                          <Minus className="h-3.5 w-3.5" /> <span className="hidden sm:inline">Deduct</span>
+                        </Button>
                         <IconButton label={`Edit ${item.name}`} onClick={() => setEditing(item)}>
                           <Pencil className="h-3.5 w-3.5" />
                         </IconButton>
@@ -242,10 +236,10 @@ export function ManageView({ source }: { source: Source }) {
                   <div className="min-w-0">
                     <p className="truncate text-[13px] font-medium">{a.name}</p>
                     <p className="truncate text-[11.5px] text-fg-subtle">
-                      {a.kind === "CREATE" ? "Added" : a.kind === "IMPORT" ? "Excel upload" : "Adjusted"}
+                      {a.kind === "CREATE" ? "New item" : a.kind === "IMPORT" ? "Excel upload" : a.kind === "ISSUE" ? "Issued" : a.delta < 0 ? "Deducted" : "Added"}
                       {a.by_name ? ` · ${a.by_name}` : ""} · {relativeTime(a.created_at)}
                     </p>
-                    {a.note && a.kind === "ADJUST" ? <p className="mt-0.5 truncate text-[11.5px] text-fg-muted">{a.note}</p> : null}
+                    {a.note && (a.kind === "ADJUST" || a.kind === "ISSUE") ? <p className="mt-0.5 truncate text-[11.5px] text-fg-muted">{a.note}</p> : null}
                   </div>
                   <div className="shrink-0 text-right">
                     <p className={cn("tabular text-[13px] font-semibold", a.delta > 0 ? "text-ok" : a.delta < 0 ? "text-danger" : "text-fg-subtle")}>
@@ -279,7 +273,8 @@ export function ManageView({ source }: { source: Source }) {
 
       {adjusting ? (
         <AdjustModal
-          item={adjusting}
+          item={items.find((i) => i.id === adjusting.item.id) ?? adjusting.item}
+          initialMode={adjusting.mode}
           onClose={() => setAdjusting(null)}
           onSaved={() => {
             setAdjusting(null);
@@ -296,6 +291,14 @@ export function ManageView({ source }: { source: Source }) {
             setUploading(false);
             refresh();
           }}
+        />
+      ) : null}
+
+      {managingCategories ? (
+        <CategoriesModal
+          source={source}
+          onClose={() => setManagingCategories(false)}
+          onChanged={refresh}
         />
       ) : null}
 

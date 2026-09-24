@@ -5,8 +5,8 @@ import * as XLSX from "xlsx";
  * accepted when its first row is exactly these headers, in this order.
  */
 export const TEMPLATE_COLUMNS = [
-  { key: "sku", header: "SKU", width: 16, rule: "Required. The item's code. Matches an existing item, or creates a new one." },
-  { key: "name", header: "Name", width: 34, rule: "Required for new items. Leave blank to keep an existing item's name." },
+  { key: "sku", header: "SKU", width: 16, rule: "Optional. The item's code. If given, it matches an existing item or creates one with that code. If blank, the row matches an existing item by Name, or creates a new one with a code made from its name." },
+  { key: "name", header: "Name", width: 34, rule: "Required for new items and whenever SKU is blank. Otherwise blank keeps the existing name." },
   { key: "category", header: "Category", width: 20, rule: "Optional. Blank keeps the current value." },
   { key: "colour", header: "Colour", width: 16, rule: "Optional. Blank keeps the current value." },
   { key: "spec", header: "Specification", width: 24, rule: "Optional. Size, thickness, finish. Blank keeps the current value." },
@@ -24,7 +24,8 @@ export const MAX_ROWS = 5000;
 export type TemplateRow = {
   /** Spreadsheet row number, as the user sees it in Excel. */
   row: number;
-  sku: string;
+  /** Null when the cell was left blank; the item is then matched by name. */
+  sku: string | null;
   name: string | null;
   category: string | null;
   colour: string | null;
@@ -51,7 +52,7 @@ export function buildTemplate(): Buffer {
     ["Fill in the Items sheet, one row per item, and upload it from the Factory or Nobox dashboard."],
     ["Do not rename, reorder, add or remove columns. A file whose headers differ is rejected."],
     ["If any row has a problem, nothing is uploaded. Fix the rows listed and upload again."],
-    ["Each SKU may appear only once per file."],
+    ["Each SKU (or, for rows without a SKU, each Name) may appear only once per file."],
     [],
     ["Column", "Rule"],
     ...TEMPLATE_COLUMNS.map((c) => [c.header, c.rule]),
@@ -67,13 +68,13 @@ export function buildTemplate(): Buffer {
   return XLSX.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
-function text(value: unknown): string {
+export function text(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
   return String(value).trim();
 }
 
-function number(value: unknown): number | null {
+export function number(value: unknown): number | null {
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
   const s = text(value).replace(/,/g, "");
   if (!s) return null;
@@ -149,11 +150,14 @@ export function parseTemplate(
       });
 
     const sku = text(cell("sku")).toUpperCase();
-    if (!sku) fail("sku", "SKU is required.");
+    const name = text(cell("name"));
+    // Rows without a SKU are identified by their name instead.
+    const key = sku ? `sku:${sku.toLowerCase()}` : `name:${name.toLowerCase()}`;
+    if (!sku && !name) fail("sku", "Give a SKU or a Name, so the row can be matched to an item.");
     else if (sku.length > 48) fail("sku", "SKU must be 48 characters or fewer.");
-    else if (seen.has(sku.toLowerCase())) {
-      fail("sku", `${sku} is already on row ${seen.get(sku.toLowerCase())}. Each SKU may appear once per file.`);
-    } else seen.set(sku.toLowerCase(), rowNo);
+    else if (seen.has(key)) {
+      fail(sku ? "sku" : "name", `${sku || name} is already on row ${seen.get(key)}. Each item may appear once per file.`);
+    } else seen.set(key, rowNo);
 
     const quantityCell = text(cell("quantity"));
     const quantity = number(cell("quantity"));
@@ -169,8 +173,8 @@ export function parseTemplate(
     if (errors.length > errorsBefore) continue;
     rows.push({
       row: rowNo,
-      sku,
-      name: text(cell("name")) || null,
+      sku: sku || null,
+      name: name || null,
       category: text(cell("category")) || null,
       colour: text(cell("colour")) || null,
       spec: text(cell("spec")) || null,

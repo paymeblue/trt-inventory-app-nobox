@@ -4,5 +4,5 @@ import { homeFor } from "@/lib/rbac";
 
 export default async function RootPage() {
   const session = await getSession();
-  redirect(session ? homeFor(session.role) : "/login");
+  redirect(session ? homeFor(session.role) : "/inventory");
 }

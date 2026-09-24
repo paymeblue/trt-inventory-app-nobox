@@ -101,6 +101,10 @@ async function seed(client: PoolClient) {
     for (const [source, quantity, userId] of sides) {
       if (quantity === undefined) continue;
       const imageId = await image(client, item.sku, item.look, userId);
+      await client.query(
+        "INSERT INTO categories (source, name, created_by) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+        [source, item.category, userId],
+      );
       const { rows } = await client.query<{ id: string }>(
         `INSERT INTO items (source, sku, name, category, colour, spec, unit, quantity, reorder_level,
                             image_id, created_by, updated_by)
@@ -118,6 +122,26 @@ async function seed(client: PoolClient) {
     }
   }
   console.log(`  ${count} items across Factory and Nobox, each with a rendered swatch`);
+
+  // Two open reservations, so the Factory has something waiting to issue.
+  const designer = userIds.get("DESIGNER")!;
+  const RESERVATIONS = [
+    ["MEL-18-WHT", 12, "Ikoyi Kitchen & Wardrobes", "Island and tall units"],
+    ["HNG-SC-35", 80, "Victoria Island Office Refit", null],
+  ] as const;
+  for (const [sku, quantity, project, notes] of RESERVATIONS) {
+    const { rows } = await client.query<{ id: string }>(
+      `INSERT INTO reservations (item_id, source, quantity, project, notes, reserved_by)
+       SELECT id, source, $2, $3, $4, $5 FROM items WHERE source = 'FACTORY' AND sku = $1
+       RETURNING id`,
+      [sku, quantity, project, notes, designer],
+    );
+    await client.query(
+      "INSERT INTO reservation_events (reservation_id, action, note, created_by) VALUES ($1, 'RESERVED', $2, $3)",
+      [rows[0].id, notes, designer],
+    );
+  }
+  console.log(`  ${RESERVATIONS.length} reservations waiting to be issued`);
 }
 
 async function main() {

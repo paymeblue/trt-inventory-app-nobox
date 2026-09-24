@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { HttpError } from "./session";
 
+/** API data is live stock, so no browser or CDN may serve it from a cache. */
 export function ok<T>(data: T, init?: ResponseInit) {
-  return NextResponse.json(data, init);
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "no-store");
+  return NextResponse.json(data, { ...init, headers });
 }
 
 export function fail(status: number, message: string) {
@@ -20,9 +23,11 @@ export function handle<Args extends unknown[]>(
       if (err instanceof HttpError) return fail(err.status, err.message);
       const pg = err as { code?: string; constraint?: string; message?: string };
       if (pg?.code === "23505") {
-        return fail(409, pg.constraint === "items_source_sku_key"
-          ? "An item with that SKU already exists in this inventory."
-          : "That record already exists.");
+        const messages: Record<string, string> = {
+          items_source_sku_key: "An item with that SKU already exists in this inventory.",
+          categories_source_name_key: "A category with that name already exists.",
+        };
+        return fail(409, messages[pg.constraint ?? ""] ?? "That record already exists.");
       }
       if (pg?.code === "23503") {
         // Distinguish "you pointed at something that is gone" from "something

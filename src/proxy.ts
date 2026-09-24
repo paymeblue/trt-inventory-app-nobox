@@ -1,10 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { SESSION_COOKIE, verifySession } from "@/lib/auth";
 
+/** Anyone may browse /inventory. These always need someone signed in. */
+const PROTECTED = ["/reservations", "/factory", "/nobox", "/users"];
+
 /**
- * Keeps signed-out users out of the app shell. The token is verified here, not
- * just checked for presence, so a stale or tampered cookie is cleared instead of
- * bouncing between /login and the app.
+ * Verifies the session token before a page renders. A stale or tampered cookie
+ * is cleared rather than trusted, so it can never bounce between /login and
+ * the app. Role checks happen in each page and API route.
  *
  * Next 16 renamed the middleware convention to `proxy`.
  */
@@ -13,24 +16,29 @@ export async function proxy(req: NextRequest) {
   const session = token ? await verifySession(token) : null;
   const { pathname, search } = req.nextUrl;
 
-  if (pathname === "/login") {
-    if (session) return NextResponse.redirect(new URL("/", req.url));
-    const res = NextResponse.next();
-    if (token) res.cookies.delete(SESSION_COOKIE);
-    return res;
-  }
-
-  if (!session) {
+  let res: NextResponse;
+  if (pathname === "/login" && session) {
+    res = NextResponse.redirect(new URL("/", req.url));
+  } else if (!session && PROTECTED.some((p) => pathname === p || pathname.startsWith(`${p}/`))) {
     const url = new URL("/login", req.url);
-    if (pathname !== "/") url.searchParams.set("next", pathname + search);
-    const res = NextResponse.redirect(url);
-    if (token) res.cookies.delete(SESSION_COOKIE);
-    return res;
+    url.searchParams.set("next", pathname + search);
+    res = NextResponse.redirect(url);
+  } else {
+    res = NextResponse.next();
   }
 
-  return NextResponse.next();
+  if (token && !session) res.cookies.delete(SESSION_COOKIE);
+  return res;
 }
 
 export const config = {
-  matcher: ["/", "/inventory/:path*", "/factory/:path*", "/nobox/:path*", "/users/:path*", "/login"],
+  matcher: [
+    "/",
+    "/login",
+    "/inventory/:path*",
+    "/reservations/:path*",
+    "/factory/:path*",
+    "/nobox/:path*",
+    "/users/:path*",
+  ],
 };

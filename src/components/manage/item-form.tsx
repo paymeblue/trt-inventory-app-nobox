@@ -3,7 +3,7 @@
 import * as React from "react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { Field, Input, Textarea } from "@/components/ui/field";
+import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ImageUpload } from "@/components/image-upload";
 import { useToast } from "@/components/ui/toast";
 import type { Item } from "@/components/items/use-items";
@@ -37,13 +37,15 @@ export function ItemForm({
     unit: item?.unit ?? "pcs",
     reorderLevel: item ? String(item.reorder_level) : "",
     description: item?.description ?? "",
-    quantity: "",
+    quantity: "0",
   });
+  const NEW = "__new";
+  const [newCategory, setNewCategory] = React.useState("");
   const [imageId, setImageId] = React.useState<string | null>(item?.image_id ?? null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+  const set = (key: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) =>
     setForm((f) => ({ ...f, [key]: e.target.value }));
 
   // Suggest a SKU from the name until the user types their own.
@@ -59,7 +61,7 @@ export function ItemForm({
     const payload = {
       sku: form.sku,
       name: form.name,
-      category: form.category,
+      category: form.category === NEW ? newCategory : form.category,
       colour: form.colour,
       spec: form.spec,
       unit: form.unit,
@@ -113,20 +115,29 @@ export function ItemForm({
             <Field label="Name">
               <Input required value={form.name} onChange={set("name")} placeholder="18mm White Melamine Board" />
             </Field>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <Field label="SKU">
-                <Input
-                  required
-                  value={form.sku}
-                  onChange={(e) => {
-                    skuTouched.current = true;
-                    set("sku")(e);
-                  }}
-                  placeholder="MEL-18-WHT"
-                  className="code"
-                />
-              </Field>
-              <Field label="Unit">
+            <Field label="SKU">
+              <Input
+                required
+                value={form.sku}
+                onChange={(e) => {
+                  skuTouched.current = true;
+                  set("sku")(e);
+                }}
+                placeholder="MEL-18-WHT"
+                className="code"
+              />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              {!editing ? (
+                <Field label="Quantity in stock now">
+                  <Input
+                    type="number" min="0" step="any" inputMode="decimal" required
+                    value={form.quantity} onChange={set("quantity")} onFocus={(e) => e.target.select()}
+                    className="tabular font-semibold"
+                  />
+                </Field>
+              ) : null}
+              <Field label="Unit" className={editing ? "col-span-2" : undefined}>
                 <Input list="item-units" required value={form.unit} onChange={set("unit")} />
                 <datalist id="item-units">
                   {UNITS.map((u) => <option key={u} value={u} />)}
@@ -138,10 +149,20 @@ export function ItemForm({
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Category">
-            <Input list="item-categories" value={form.category} onChange={set("category")} placeholder="Boards & Panels" />
-            <datalist id="item-categories">
-              {categories.map((c) => <option key={c} value={c} />)}
-            </datalist>
+            <Select value={form.category} onChange={set("category")}>
+              <option value="">No category</option>
+              {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+              {form.category && form.category !== NEW && !categories.includes(form.category) ? (
+                <option value={form.category}>{form.category}</option>
+              ) : null}
+              <option value={NEW}>+ New category…</option>
+            </Select>
+            {form.category === NEW ? (
+              <Input
+                autoFocus required className="mt-2" maxLength={60}
+                value={newCategory} onChange={(e) => setNewCategory(e.target.value)} placeholder="New category name"
+              />
+            ) : null}
           </Field>
           <Field label="Colour / finish">
             <Input value={form.colour} onChange={set("colour")} placeholder="White gloss" />
@@ -156,15 +177,6 @@ export function ItemForm({
             />
           </Field>
         </div>
-
-        {!editing ? (
-          <Field label="Quantity in stock now">
-            <Input
-              type="number" min="0" step="any" inputMode="decimal"
-              value={form.quantity} onChange={set("quantity")} placeholder="0" className="tabular"
-            />
-          </Field>
-        ) : null}
 
         <Field label="Description">
           <Textarea value={form.description} onChange={set("description")} placeholder="Anything the design team should know." />

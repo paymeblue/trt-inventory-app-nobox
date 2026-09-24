@@ -1,9 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { LayoutGrid, List as ListIcon, PackageSearch } from "lucide-react";
+import Link from "next/link";
+import { Bookmark, FileSpreadsheet, LayoutGrid, List as ListIcon, LogIn, PackageSearch } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
+import { Button, buttonClass } from "@/components/ui/button";
+import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty";
 import { Pagination } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
@@ -12,9 +15,18 @@ import { LiveIndicator, SourceBadge, StockStatus } from "@/components/status";
 import { ItemFilters, useFilters } from "@/components/items/filters";
 import { ItemDetail } from "@/components/items/item-detail";
 import { useItems, type Item } from "@/components/items/use-items";
+import { useDeductionAlerts } from "@/components/items/use-deduction-alerts";
+import { ReserveModal } from "@/components/reservations/reserve-modal";
+import { ReserveUploadModal } from "@/components/reservations/reserve-upload-modal";
+import { useReservationAlerts } from "@/components/reservations/use-reservation-alerts";
+import { signInHref, useSession } from "@/components/session-context";
+import { apiFetch } from "@/lib/client";
 import { cn, qty, relativeTime } from "@/lib/utils";
 
 const PAGE_SIZE = 48;
+
+/** A request to reserve, made while signed out, survives the trip through /login in the URL. */
+type Intent = { kind: "reserve"; item: Item } | { kind: "upload" };
 
 const TABS = [
   { value: "", label: "Everything" },
@@ -27,9 +39,43 @@ export function InventoryView() {
   const [view, setView] = React.useState<"grid" | "table">("grid");
   const [page, setPage] = React.useState(1);
   const [open, setOpen] = React.useState<Item | null>(null);
+  const [intent, setIntent] = React.useState<Intent | null>(null);
+  const [signIn, setSignIn] = React.useState<{ title: string; returnTo: string } | null>(null);
   const { filters, setFilters, params, active } = useFilters();
+  const session = useSession();
 
-  const { data, loading, error, syncedAt, changed } = useItems({ ...params, source, page, pageSize: PAGE_SIZE });
+  const { data, loading, error, syncedAt, liveAt, changed, reload } = useItems({ ...params, source, page, pageSize: PAGE_SIZE });
+  useDeductionAlerts(syncedAt);
+  useReservationAlerts(syncedAt);
+
+  // Coming back from /login: carry on with what the visitor was doing.
+  React.useEffect(() => {
+    if (!session) return;
+    const url = new URL(window.location.href);
+    const reserve = url.searchParams.get("reserve");
+    const upload = url.searchParams.get("upload");
+    if (!reserve && !upload) return;
+    url.searchParams.delete("reserve");
+    url.searchParams.delete("upload");
+    window.history.replaceState(null, "", url.pathname + url.search);
+    if (upload) setIntent({ kind: "upload" });
+    if (reserve) {
+      apiFetch<Item>(`/api/items/${reserve}`)
+        .then((item) => setIntent({ kind: "reserve", item }))
+        .catch(() => undefined);
+    }
+  }, [session]);
+
+  function reserve(item: Item) {
+    setOpen(null);
+    if (session) setIntent({ kind: "reserve", item });
+    else setSignIn({ title: `Sign in to reserve ${item.name}`, returnTo: `/inventory?reserve=${item.id}` });
+  }
+
+  function uploadReservations() {
+    if (session) setIntent({ kind: "upload" });
+    else setSignIn({ title: "Sign in to reserve from Excel", returnTo: "/inventory?upload=reservations" });
+  }
 
   React.useEffect(() => {
     setPage(1);
@@ -46,7 +92,14 @@ export function InventoryView() {
       <PageHeader
         title="Inventory"
         description="Everything in the Factory and at Nobox, in one place. Quantities update on their own."
-        action={<LiveIndicator syncedAt={syncedAt} error={error} />}
+        action={
+          <>
+            <LiveIndicator syncedAt={liveAt} error={error} />
+            <Button variant="secondary" onClick={uploadReservations}>
+              <FileSpreadsheet className="h-4 w-4" /> Reserve from Excel
+            </Button>
+          </>
+        }
       />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -67,8 +120,16 @@ export function InventoryView() {
             </button>
           ))}
         </div>
-        {counts && (counts.low || counts.out) ? (
+        {counts && (counts.low || counts.out || counts.reserved) ? (
           <div className="flex gap-1.5 text-[12.5px]">
+            {counts.reserved ? (
+              <button
+                onClick={() => setFilters({ ...filters, status: "reserved" })}
+                className="rounded-lg bg-info-soft px-2.5 py-1.5 font-medium text-info"
+              >
+                {counts.reserved} reserved
+              </button>
+            ) : null}
             {counts.low ? (
               <button
                 onClick={() => setFilters({ ...filters, status: "low" })}
@@ -135,11 +196,19 @@ export function InventoryView() {
         ) : view === "grid" ? (
           <div className={cn("grid grid-cols-2 gap-2.5 p-2.5 sm:gap-3 sm:p-4 lg:grid-cols-3 xl:grid-cols-4", loading && "opacity-60")}>
             {items.map((item) => (
-              <button
+              <div
                 key={item.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => setOpen(item)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setOpen(item);
+                  }
+                }}
                 className={cn(
-                  "group overflow-hidden rounded-xl border border-border bg-surface text-left transition-all hover:border-border-strong hover:shadow-[var(--shadow)]",
+                  "group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border bg-surface text-left transition-all hover:border-border-strong hover:shadow-[var(--shadow)]",
                   changed.has(item.id) && "animate-flash",
                 )}
               >
@@ -152,20 +221,37 @@ export function InventoryView() {
                   />
                   <SourceBadge source={item.source} className="absolute left-2 top-2 shadow-sm" />
                 </div>
-                <div className="p-2.5 sm:p-3">
+                <div className="flex flex-1 flex-col p-2.5 sm:p-3">
                   <p className="code truncate text-[11px] text-fg-subtle">{item.sku}</p>
                   <h3 className="mt-0.5 line-clamp-2 text-[13.5px] font-medium leading-snug">{item.name}</h3>
                   <p className="mt-1 truncate text-[11.5px] text-fg-subtle">
                     {[item.category, item.colour].filter(Boolean).join(" · ") || "—"}
                   </p>
-                  <div className="mt-2.5 flex flex-wrap items-end justify-between gap-2 border-t border-border pt-2.5">
-                    <p className="tabular text-[16px] font-semibold leading-none">
-                      {qty(item.quantity)} <span className="text-[11px] font-normal text-fg-subtle">{item.unit}</span>
-                    </p>
-                    <StockStatus onHand={item.quantity} reorder={item.reorder_level} />
+                  <div className="mt-auto pt-2.5">
+                    <div className="flex flex-wrap items-end justify-between gap-2 border-t border-border pt-2.5">
+                      <div>
+                        <p className="tabular text-[16px] font-semibold leading-none">
+                          {qty(item.available)} <span className="text-[11px] font-normal text-fg-subtle">{item.unit} available</span>
+                        </p>
+                        {item.reserved > 0 ? (
+                          <p className="tabular mt-1 text-[11px] text-warn">{qty(item.reserved)} reserved of {qty(item.quantity)}</p>
+                        ) : null}
+                      </div>
+                      <StockStatus onHand={item.available} reorder={item.reorder_level} />
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        reserve(item);
+                      }}
+                      disabled={item.available <= 0}
+                      className={buttonClass("secondary", "sm", "mt-2.5 w-full")}
+                    >
+                      <Bookmark className="h-3.5 w-3.5" /> Reserve
+                    </button>
                   </div>
                 </div>
-              </button>
+              </div>
             ))}
           </div>
         ) : (
@@ -177,7 +263,8 @@ export function InventoryView() {
                   <Th>From</Th>
                   <Th className="hidden lg:table-cell">Category</Th>
                   <Th className="hidden xl:table-cell">Specification</Th>
-                  <Th align="right">In stock</Th>
+                  <Th align="right">Available</Th>
+                  <Th align="right" className="hidden md:table-cell">Reserved</Th>
                   <Th align="center" className="hidden sm:table-cell">Status</Th>
                   <Th align="right" className="hidden md:table-cell">Changed</Th>
                 </tr>
@@ -205,11 +292,14 @@ export function InventoryView() {
                     <Td className="hidden text-[13px] text-fg-muted lg:table-cell">{item.category ?? "—"}</Td>
                     <Td className="hidden text-[13px] text-fg-muted xl:table-cell">{item.spec ?? "—"}</Td>
                     <Td align="right">
-                      <span className="tabular text-[13.5px] font-semibold">{qty(item.quantity)}</span>
+                      <span className="tabular text-[13.5px] font-semibold">{qty(item.available)}</span>
                       <span className="ml-1 text-[11px] text-fg-subtle">{item.unit}</span>
                     </Td>
+                    <Td align="right" className="tabular hidden text-[13px] text-warn md:table-cell">
+                      {item.reserved > 0 ? qty(item.reserved) : <span className="text-fg-subtle">—</span>}
+                    </Td>
                     <Td align="center" className="hidden sm:table-cell">
-                      <StockStatus onHand={item.quantity} reorder={item.reorder_level} />
+                      <StockStatus onHand={item.available} reorder={item.reorder_level} />
                     </Td>
                     <Td align="right" className="hidden whitespace-nowrap text-[12px] text-fg-subtle md:table-cell">
                       {relativeTime(item.updated_at)}
@@ -226,7 +316,54 @@ export function InventoryView() {
         ) : null}
       </Card>
 
-      {open ? <ItemDetail item={items.find((i) => i.id === open.id) ?? open} onClose={() => setOpen(null)} /> : null}
+      {open ? (
+        <ItemDetail
+          item={items.find((i) => i.id === open.id) ?? open}
+          onClose={() => setOpen(null)}
+          onReserve={() => reserve(items.find((i) => i.id === open.id) ?? open)}
+        />
+      ) : null}
+
+      {intent?.kind === "reserve" && session ? (
+        <ReserveModal
+          item={items.find((i) => i.id === intent.item.id) ?? intent.item}
+          onClose={() => setIntent(null)}
+          onSaved={() => {
+            setIntent(null);
+            void reload(true);
+          }}
+        />
+      ) : null}
+
+      {intent?.kind === "upload" && session ? (
+        <ReserveUploadModal
+          onClose={() => setIntent(null)}
+          onApplied={() => {
+            setIntent(null);
+            void reload(true);
+          }}
+        />
+      ) : null}
+
+      {signIn ? (
+        <Modal
+          open
+          onClose={() => setSignIn(null)}
+          size="sm"
+          title={signIn.title}
+          description="Anyone can browse the inventory. Reserving needs your TRT Nobox account, so the factory knows who it is for."
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setSignIn(null)}>Not now</Button>
+              <Link href={signInHref(signIn.returnTo)} className={buttonClass("primary", "md")}>
+                <LogIn className="h-4 w-4" /> Sign in
+              </Link>
+            </>
+          }
+        >
+          <p className="text-[13px] text-fg-muted">You will come straight back here to finish.</p>
+        </Modal>
+      ) : null}
     </>
   );
 }

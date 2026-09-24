@@ -1,8 +1,8 @@
-import { queryOne } from "@/lib/db";
-import { requireManager, requireSession } from "@/lib/session";
+import { queryOne, transaction } from "@/lib/db";
+import { getSession, requireManager } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
 import type { Source } from "@/lib/rbac";
-import { ITEM_COLUMNS, ITEM_FROM, parseItemBody } from "@/lib/items";
+import { ensureCategory, ITEM_COLUMNS, ITEM_FROM, parseItemBody } from "@/lib/items";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,12 +18,11 @@ async function sourceOf(id: string): Promise<Source | null> {
 }
 
 export const GET = handle(async (_req: Request, ctx: Ctx) => {
-  await requireSession();
   const { id } = await ctx.params;
   if (!UUID.test(id)) return fail(404, "Item not found.");
   const item = await queryOne(`SELECT ${ITEM_COLUMNS} ${ITEM_FROM} WHERE i.id = $1`, [id]);
   if (!item) return fail(404, "Item not found.");
-  return ok(item);
+  return ok((await getSession()) ? item : { ...item, updated_by_name: null });
 });
 
 /** Edits details. Quantity only changes through /adjust so every change is logged. */
@@ -37,24 +36,28 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   const f = parseItemBody(body, { creating: false });
   const has = (key: string) => Object.prototype.hasOwnProperty.call(body, key);
 
-  const row = await queryOne(
-    `UPDATE items SET
-       sku = COALESCE($1, sku),
-       name = COALESCE($2, name),
-       category = CASE WHEN $3 THEN NULLIF($4, '') ELSE category END,
-       colour = CASE WHEN $5 THEN NULLIF($6, '') ELSE colour END,
-       spec = CASE WHEN $7 THEN NULLIF($8, '') ELSE spec END,
-       unit = COALESCE($9, unit),
-       reorder_level = COALESCE($10, reorder_level),
-       description = CASE WHEN $11 THEN NULLIF($12, '') ELSE description END,
-       image_id = CASE WHEN $13 THEN $14::uuid ELSE image_id END,
-       updated_by = $15,
-       updated_at = now()
-     WHERE id = $16 RETURNING id`,
-    [f.sku, f.name, has("category"), f.category ?? "", has("colour"), f.colour ?? "",
-     has("spec"), f.spec ?? "", f.unit, f.reorderLevel, has("description"), f.description ?? "",
-     has("imageId"), f.imageId, session.sub, id],
-  );
+  const row = await transaction(async (client) => {
+    const category = has("category") ? await ensureCategory(client, source, f.category, session.sub) : null;
+    const { rows } = await client.query(
+      `UPDATE items SET
+         sku = COALESCE($1, sku),
+         name = COALESCE($2, name),
+         category = CASE WHEN $3 THEN NULLIF($4, '') ELSE category END,
+         colour = CASE WHEN $5 THEN NULLIF($6, '') ELSE colour END,
+         spec = CASE WHEN $7 THEN NULLIF($8, '') ELSE spec END,
+         unit = COALESCE($9, unit),
+         reorder_level = COALESCE($10, reorder_level),
+         description = CASE WHEN $11 THEN NULLIF($12, '') ELSE description END,
+         image_id = CASE WHEN $13 THEN $14::uuid ELSE image_id END,
+         updated_by = $15,
+         updated_at = now()
+       WHERE id = $16 RETURNING id`,
+      [f.sku, f.name, has("category"), category ?? "", has("colour"), f.colour ?? "",
+       has("spec"), f.spec ?? "", f.unit, f.reorderLevel, has("description"), f.description ?? "",
+       has("imageId"), f.imageId, session.sub, id],
+    );
+    return rows[0];
+  });
   return ok(row);
 });
 

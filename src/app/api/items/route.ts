@@ -1,21 +1,25 @@
 import { query, transaction } from "@/lib/db";
-import { requireManager, requireSession } from "@/lib/session";
+import { getSession, requireManager } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
 import { isSource } from "@/lib/rbac";
-import { ITEM_COLUMNS, ITEM_FROM, parseItemBody, recordMovement } from "@/lib/items";
+import { ensureCategory, ITEM_COLUMNS, ITEM_FROM, parseItemBody, recordMovement, RESERVED_SQL } from "@/lib/items";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/** In stock minus reserved. Stock levels are judged on this, not on the raw count. */
+const AVAILABLE = `(i.quantity - ${RESERVED_SQL})`;
+
 const SORTS: Record<string, string> = {
   name: "lower(i.name) ASC, i.sku",
-  "qty-desc": "i.quantity DESC, lower(i.name)",
-  "qty-asc": "i.quantity ASC, lower(i.name)",
+  "qty-desc": `${AVAILABLE} DESC, lower(i.name)`,
+  "qty-asc": `${AVAILABLE} ASC, lower(i.name)`,
   updated: "i.updated_at DESC",
 };
 
+/** Public: anyone may browse the inventory without signing in. */
 export const GET = handle(async (req: Request) => {
-  await requireSession();
+  const session = await getSession();
   const url = new URL(req.url);
   const p = url.searchParams;
 
@@ -50,9 +54,10 @@ export const GET = handle(async (req: Request) => {
     params.push(category);
     where.push(`i.category = $${params.length}`);
   }
-  if (status === "out") where.push("i.quantity <= 0");
-  if (status === "low") where.push("i.quantity > 0 AND i.reorder_level > 0 AND i.quantity <= i.reorder_level");
-  if (status === "ok") where.push("i.quantity > 0 AND (i.reorder_level = 0 OR i.quantity > i.reorder_level)");
+  if (status === "out") where.push(`${AVAILABLE} <= 0`);
+  if (status === "low") where.push(`${AVAILABLE} > 0 AND i.reorder_level > 0 AND ${AVAILABLE} <= i.reorder_level`);
+  if (status === "ok") where.push(`${AVAILABLE} > 0 AND (i.reorder_level = 0 OR ${AVAILABLE} > i.reorder_level)`);
+  if (status === "reserved") where.push(`${RESERVED_SQL} > 0`);
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const scopeSql = scope.length ? `WHERE ${scope.join(" AND ")}` : "";
@@ -64,26 +69,28 @@ export const GET = handle(async (req: Request) => {
       params,
     ),
     query<{ n: number }>(`SELECT COUNT(*)::int AS n FROM items i ${whereSql}`, params),
+    // From the categories list rather than the items, so a category a manager
+    // has just created is offered before anything is filed under it.
     query<{ category: string }>(
-      `SELECT DISTINCT i.category FROM items i ${scopeSql}
-        ${scopeSql ? "AND" : "WHERE"} i.category IS NOT NULL ORDER BY 1`,
+      `SELECT DISTINCT i.name AS category FROM categories i ${scopeSql} ORDER BY 1`,
       scopeParams,
     ),
     // Factory and Nobox totals are always group-wide (they label the source
     // tabs); low and out follow the source being viewed.
-    query<{ factory: number; nobox: number; low: number; out: number }>(
-      `SELECT COUNT(*) FILTER (WHERE source = 'FACTORY')::int AS factory,
-              COUNT(*) FILTER (WHERE source = 'NOBOX')::int AS nobox,
-              COUNT(*) FILTER (WHERE ($1::text IS NULL OR source = $1)
-                AND quantity > 0 AND reorder_level > 0 AND quantity <= reorder_level)::int AS low,
-              COUNT(*) FILTER (WHERE ($1::text IS NULL OR source = $1) AND quantity <= 0)::int AS out
-         FROM items`,
+    query<{ factory: number; nobox: number; low: number; out: number; reserved: number }>(
+      `SELECT COUNT(*) FILTER (WHERE i.source = 'FACTORY')::int AS factory,
+              COUNT(*) FILTER (WHERE i.source = 'NOBOX')::int AS nobox,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1)
+                AND ${AVAILABLE} > 0 AND i.reorder_level > 0 AND ${AVAILABLE} <= i.reorder_level)::int AS low,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND ${AVAILABLE} <= 0)::int AS out,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND ${RESERVED_SQL} > 0)::int AS reserved
+         FROM items i`,
       [isSource(source) ? source : null],
     ),
   ]);
 
   return ok({
-    items,
+    items: session ? items : items.map((i) => ({ ...i, updated_by_name: null })),
     total: totals[0].n,
     categories: categories.map((c) => c.category),
     counts: counts[0],
@@ -103,11 +110,12 @@ export const POST = handle(async (req: Request) => {
   if (!Number.isFinite(quantity) || quantity < 0) return fail(400, "Starting quantity must be 0 or more.");
 
   const item = await transaction(async (client) => {
+    const category = await ensureCategory(client, source, fields.category, session.sub);
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO items (source, sku, name, category, colour, spec, unit, quantity, reorder_level,
                           description, image_id, created_by, updated_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12) RETURNING id`,
-      [source, fields.sku, fields.name, fields.category, fields.colour, fields.spec,
+      [source, fields.sku, fields.name, category, fields.colour, fields.spec,
        fields.unit ?? "pcs", quantity, fields.reorderLevel ?? 0, fields.description,
        fields.imageId, session.sub],
     );

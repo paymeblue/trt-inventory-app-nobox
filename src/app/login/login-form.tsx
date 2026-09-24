@@ -9,7 +9,9 @@ import { Field, Input } from "@/components/ui/field";
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/";
+  // Only same-site paths, so the link cannot bounce someone to another site.
+  const requested = params.get("next") ?? "";
+  const next = requested.startsWith("/") && !requested.startsWith("//") ? requested : "/";
 
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");

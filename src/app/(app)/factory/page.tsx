@@ -8,6 +8,7 @@ export const metadata: Metadata = { title: "Factory inventory" };
 
 export default async function FactoryPage() {
   const session = await getSession();
-  if (!session || !canManage(session.role, "FACTORY")) redirect("/inventory");
+  if (!session) redirect("/login?next=/factory");
+  if (!canManage(session.role, "FACTORY")) redirect("/inventory");
   return <ManageView source="FACTORY" />;
 }

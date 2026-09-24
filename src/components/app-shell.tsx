@@ -3,11 +3,11 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, X, ChevronDown, LayoutGrid, Factory, Store, Users } from "lucide-react";
+import { LogOut, Menu, X, ChevronDown, LayoutGrid, Factory, Store, Users, ClipboardList, LogIn } from "lucide-react";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme";
 import { canManage, canManageUsers, homeFor, ROLE_LABELS, type Role } from "@/lib/rbac";
-import { SessionProvider } from "./session-context";
+import { SessionProvider, signInHref } from "./session-context";
 import { cn, initials } from "@/lib/utils";
 
 type Session = { sub: string; name: string; email: string; role: Role };
@@ -16,17 +16,18 @@ type NavItem = {
   href: string;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  allowed: (role: Role) => boolean;
+  allowed: (role: Role | null) => boolean;
 };
 
 const NAV: NavItem[] = [
   { href: "/inventory", label: "Inventory", icon: LayoutGrid, allowed: () => true },
+  { href: "/reservations", label: "Reservations", icon: ClipboardList, allowed: (r) => r !== null },
   { href: "/factory", label: "Factory", icon: Factory, allowed: (r) => canManage(r, "FACTORY") },
   { href: "/nobox", label: "Nobox", icon: Store, allowed: (r) => canManage(r, "NOBOX") },
   { href: "/users", label: "Team", icon: Users, allowed: canManageUsers },
 ];
 
-function useAllowedNav(role: Role) {
+function useAllowedNav(role: Role | null) {
   return React.useMemo(() => NAV.filter((item) => item.allowed(role)), [role]);
 }
 
@@ -55,7 +56,7 @@ function NavLink({ item, pathname, onNavigate }: { item: NavItem; pathname: stri
   );
 }
 
-function SidebarContent({ role, pathname, onNavigate }: { role: Role; pathname: string; onNavigate?: () => void }) {
+function SidebarContent({ role, pathname, onNavigate }: { role: Role | null; pathname: string; onNavigate?: () => void }) {
   const items = useAllowedNav(role);
   return (
     <nav className="scrollbar-thin flex-1 space-y-0.5 overflow-y-auto px-3 py-4">
@@ -66,7 +67,27 @@ function SidebarContent({ role, pathname, onNavigate }: { role: Role; pathname: 
   );
 }
 
-function UserBlock({ session }: { session: Session }) {
+function SignInBlock() {
+  const pathname = usePathname();
+  return (
+    <div className="border-t border-border p-3">
+      <Link
+        href={signInHref(pathname)}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-accent px-3 py-2.5 text-[13.5px] font-medium text-accent-fg transition-colors hover:bg-accent-hover"
+      >
+        <LogIn className="h-4 w-4" /> Sign in
+      </Link>
+      <p className="mt-2 px-1 text-center text-[11.5px] text-fg-subtle">Sign in to reserve items</p>
+    </div>
+  );
+}
+
+function UserBlock({ session }: { session: Session | null }) {
+  if (!session) return <SignInBlock />;
+  return <SignedInBlock session={session} />;
+}
+
+function SignedInBlock({ session }: { session: Session }) {
   const [open, setOpen] = React.useState(false);
   const router = useRouter();
   const ref = React.useRef<HTMLDivElement>(null);
@@ -119,11 +140,12 @@ function UserBlock({ session }: { session: Session }) {
   );
 }
 
-export function AppShell({ session, children }: { session: Session; children: React.ReactNode }) {
+export function AppShell({ session, children }: { session: Session | null; children: React.ReactNode }) {
   const pathname = usePathname();
   const [drawer, setDrawer] = React.useState(false);
-  const bottomItems = useAllowedNav(session.role);
-  const home = homeFor(session.role);
+  const role = session?.role ?? null;
+  const bottomItems = useAllowedNav(role);
+  const home = session ? homeFor(session.role) : "/inventory";
 
   React.useEffect(() => {
     setDrawer(false);
@@ -146,7 +168,7 @@ export function AppShell({ session, children }: { session: Session; children: Re
             <Logo />
           </Link>
         </div>
-        <SidebarContent role={session.role} pathname={pathname} />
+        <SidebarContent role={role} pathname={pathname} />
         <UserBlock session={session} />
       </aside>
 
@@ -165,7 +187,7 @@ export function AppShell({ session, children }: { session: Session; children: Re
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <SidebarContent role={session.role} pathname={pathname} onNavigate={() => setDrawer(false)} />
+            <SidebarContent role={role} pathname={pathname} onNavigate={() => setDrawer(false)} />
             <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
               <span className="text-[12.5px] text-fg-muted">Theme</span>
               <ThemeToggle />
