@@ -33,10 +33,10 @@ const STATUSES = [
 ] as const;
 
 const STATUS_BADGE: Record<Reservation["status"], React.ReactNode> = {
-  RESERVED: <Badge tone="warn" dot>reserved</Badge>,
-  PART_ISSUED: <Badge tone="info" dot>part issued</Badge>,
-  ISSUED: <Badge tone="ok" dot>issued</Badge>,
-  CANCELLED: <Badge tone="neutral" dot>released</Badge>,
+  RESERVED: <Badge tone="warn" dot>Reserved</Badge>,
+  PART_ISSUED: <Badge tone="info" dot>Part Issued</Badge>,
+  ISSUED: <Badge tone="ok" dot>Issued</Badge>,
+  CANCELLED: <Badge tone="neutral" dot>Released</Badge>,
 };
 
 type Response = {

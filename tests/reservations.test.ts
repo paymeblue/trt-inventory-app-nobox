@@ -65,9 +65,9 @@ describe("Reservation form", () => {
 
   test("Insufficient available quantity, then OUT OF STOCK", async () => {
     await reserve(8);
-    await assert.rejects(reserve(3), /Insufficient available quantity: 2 Sheet/);
+    await assert.rejects(reserve(3), /Insufficient available quantity: 8 Sheet already reserved, so only 2 of 10 Sheet/);
     await reserve(2);
-    await assert.rejects(reserve(1), /OUT OF STOCK/);
+    await assert.rejects(reserve(1), /OUT OF STOCK: 10 Sheet already reserved, so none of the 10 Sheet/);
   });
 });
 
@@ -175,7 +175,7 @@ describe("Stock adjustment form", () => {
 
   test("a deduction cannot eat into reserved stock or go below zero", async () => {
     await reserve(7);
-    await assert.rejects(adjust("Damage / Write-off", 4), /7 Sheet of LISSA OAK 18MM are reserved, so at most 3/);
+    await assert.rejects(adjust("Damage / Write-off", 4), /7 Sheet of LISSA OAK 18MM are reserved, so only 3 of 10 can be taken away/);
     await adjust("Damage / Write-off", 3);
     assert.deepEqual(await item(), { quantity: 7, reserved: 7, available: 0, issued: 0, added: 0, status: "OUT OF STOCK" });
   });

@@ -63,9 +63,9 @@ export function ReserveModal({
     : !Number.isFinite(quantity) || quantity <= 0
       ? "Quantity must be greater than zero"
       : item.available <= 0
-        ? "OUT OF STOCK"
+        ? `OUT OF STOCK${item.reserved > 0 ? `: ${qty(item.reserved)} ${item.unit} already reserved, none of the ${qty(item.quantity)} available` : ""}`
         : quantity > item.available
-          ? "Insufficient available quantity"
+          ? `Insufficient available quantity: ${item.reserved > 0 ? `${qty(item.reserved)} ${item.unit} already reserved, so ` : ""}only ${qty(item.available)} of ${qty(item.quantity)} available`
           : null;
 
   async function submit(e: React.FormEvent) {
@@ -128,6 +128,8 @@ export function ReserveModal({
               ["Dimensions", item.dimensions],
               ["Unit", item.unit],
               ["From", <SourceBadge key="s" source={item.source} />],
+              ["In stock", n(item.quantity)],
+              ["Already reserved", <span key="r" className={item.reserved > 0 ? "text-warn" : undefined}>{n(item.reserved)}</span>],
               ["Available Qty", <span key="a" className="tabular font-semibold">{n(item.available)}</span>],
             ]}
           />

@@ -33,9 +33,11 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
        phone = COALESCE($3, phone),
        is_active = COALESCE($4, is_active),
        password_hash = COALESCE($5, password_hash),
+       job_title = CASE WHEN $7 THEN NULLIF($8, '') ELSE job_title END,
        updated_at = now()
      WHERE id = $6 RETURNING id`,
-    [b.fullName ?? null, b.role ?? null, b.phone ?? null, b.isActive ?? null, passwordHash, id],
+    [b.fullName ?? null, b.role ?? null, b.phone ?? null, b.isActive ?? null, passwordHash, id,
+     "jobTitle" in b, String(b.jobTitle ?? "").trim()],
   );
   if (!row) return fail(404, "User not found.");
   return ok(row);

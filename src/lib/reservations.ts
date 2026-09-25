@@ -72,9 +72,13 @@ export async function createReservation(client: PoolClient, input: ReservationIn
 
   const item = await lockItem(client, input.itemId);
   const available = item.quantity - item.reserved;
-  if (available <= 0) throw new HttpError(400, `OUT OF STOCK: nothing of ${item.sku} | ${item.name} is available.`);
+  // Say what is held and why, so the designer is not left guessing.
+  const held = item.reserved > 0 ? `${item.reserved} ${item.unit} already reserved, so ` : "";
+  if (available <= 0) {
+    throw new HttpError(400, `OUT OF STOCK: ${held}none of the ${item.quantity} ${item.unit} of ${item.sku} | ${item.name} are available.`);
+  }
   if (quantity > available) {
-    throw new HttpError(400, `Insufficient available quantity: ${available} ${item.unit} of ${item.sku} | ${item.name} available.`);
+    throw new HttpError(400, `Insufficient available quantity: ${held}only ${available} of ${item.quantity} ${item.unit} of ${item.sku} | ${item.name} are available.`);
   }
 
   const { rows } = await client.query<{ id: string; ref: string }>(

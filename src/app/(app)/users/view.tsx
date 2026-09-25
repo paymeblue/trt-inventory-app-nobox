@@ -18,12 +18,12 @@ import { apiFetch } from "@/lib/client";
 import { initials, relativeTime } from "@/lib/utils";
 
 type Row = {
-  id: string; email: string; full_name: string; role: Role; phone: string | null;
+  id: string; email: string; full_name: string; role: Role; job_title: string | null; phone: string | null;
   is_active: boolean; last_login_at: string | null; created_at: string;
 };
 
 const EMPTY = {
-  fullName: "", email: "", password: "", role: "DESIGNER" as Role, phone: "",
+  fullName: "", email: "", password: "", role: "DESIGNER" as Role, phone: "", jobTitle: "",
 };
 
 export function UsersView() {
@@ -57,6 +57,7 @@ export function UsersView() {
           fullName: form.fullName,
           role: form.role,
           phone: form.phone || null,
+          jobTitle: form.jobTitle,
         };
         if (form.password) payload.password = form.password;
         await apiFetch(`/api/users/${editing.id}`, { method: "PATCH", body: JSON.stringify(payload) });
@@ -157,7 +158,8 @@ export function UsersView() {
                     </div>
                   </Td>
                   <Td>
-                    <span className="text-[13px]">{ROLE_LABELS[u.role]}</span>
+                    <span className="block text-[13px]">{u.job_title ?? ROLE_LABELS[u.role]}</span>
+                    {u.job_title ? <span className="block text-[11.5px] text-fg-subtle">{ROLE_LABELS[u.role]}</span> : null}
                   </Td>
                   <Td align="right" className="hidden whitespace-nowrap text-[12px] text-fg-subtle md:table-cell">
                     {u.last_login_at ? relativeTime(u.last_login_at) : "never"}
@@ -175,6 +177,7 @@ export function UsersView() {
                             password: "",
                             role: u.role,
                             phone: u.phone ?? "",
+                            jobTitle: u.job_title ?? "",
                           });
                           setError(null);
                           setEditing(u);
@@ -255,6 +258,19 @@ export function UsersView() {
               placeholder="Adaeze Okonkwo"
             />
           </Field>
+          <Field label="Job title" hint="what they are called, e.g. CEO, COO, Head of Design">
+            <Input
+              list="job-titles"
+              value={form.jobTitle}
+              onChange={(e) => setForm((f) => ({ ...f, jobTitle: e.target.value }))}
+              placeholder="CEO"
+            />
+            <datalist id="job-titles">
+              {["CEO", "COO", "CFO", "Head of Design", "Designer", "Factory Manager", "Nobox Manager", "Storekeeper", "Inventory Officer", "Procurement"].map((t) => (
+                <option key={t} value={t} />
+              ))}
+            </datalist>
+          </Field>
           <Field label="Work email">
             <Input
               type="email"
@@ -285,7 +301,7 @@ export function UsersView() {
             </div>
           </Field>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Role">
+            <Field label="Access" hint="what they can do in the app">
               <Select
                 value={form.role}
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Role }))}

@@ -118,8 +118,9 @@ export async function importReservations(
   const ids = new Map<number, string>();
 
   for (const r of parsed.rows) {
-    const { rows } = await client.query<{ id: string; sku: string; name: string; unit: string; available: number }>(
-      `SELECT i.id, i.sku, i.name, i.unit, (i.quantity - ${RESERVED_SQL})::float8 AS available
+    const { rows } = await client.query<{ id: string; sku: string; name: string; unit: string; in_stock: number; reserved: number; available: number }>(
+      `SELECT i.id, i.sku, i.name, i.unit, i.quantity::float8 AS in_stock, (${RESERVED_SQL})::float8 AS reserved,
+              (i.quantity - ${RESERVED_SQL})::float8 AS available
          FROM items i WHERE i.source = $1 AND lower(i.sku) = lower($2)`,
       [r.source, r.sku],
     );
@@ -133,9 +134,13 @@ export async function importReservations(
       errors.push({
         row: r.row,
         column: "Quantity_Requested",
-        message: left <= 0
-          ? `OUT OF STOCK: nothing of ${item.sku} | ${item.name} is available${claimed.has(item.id) ? " after earlier rows in this file" : ""}.`
-          : `Insufficient available quantity: ${left} ${item.unit} of ${item.sku} | ${item.name} available${claimed.has(item.id) ? " after earlier rows in this file" : ""}.`,
+        message: (() => {
+          const held = item.reserved + (claimed.get(item.id) ?? 0);
+          const why = held > 0 ? `${held} ${item.unit} already reserved${claimed.has(item.id) ? " (counting earlier rows in this file)" : ""}, so ` : "";
+          return left <= 0
+            ? `OUT OF STOCK: ${why}none of the ${item.in_stock} ${item.unit} of ${item.sku} | ${item.name} are available.`
+            : `Insufficient available quantity: ${why}only ${left} of ${item.in_stock} ${item.unit} of ${item.sku} | ${item.name} are available.`;
+        })(),
       });
       continue;
     }

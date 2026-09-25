@@ -123,7 +123,7 @@ export async function adjustStock(
     if (change < 0 && next < item.reserved) {
       throw new HttpError(
         400,
-        `${item.reserved} ${item.unit} of ${item.name} are reserved, so at most ${Math.max(0, item.quantity - item.reserved)} can be taken away. ` +
+        `${item.reserved} ${item.unit} of ${item.name} are reserved, so only ${Math.max(0, item.quantity - item.reserved)} of ${item.quantity} can be taken away. ` +
           "Issue or release the reservations first.",
       );
     }
