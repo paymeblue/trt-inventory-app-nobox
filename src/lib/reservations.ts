@@ -15,7 +15,8 @@ export const RESERVATION_COLUMNS = `
   r.created_at, r.closed_at, r.reserved_by,
   COALESCE(ru.full_name, r.designer_name) AS reserved_by_name,
   COALESCE(ru.email, r.designer_email) AS reserved_by_email,
-  i.name AS item_name, i.sku, i.unit, i.image_id, i.category,
+  ru.job_title AS reserved_by_title,
+  i.name AS item_name, i.sku, i.unit, i.image_id, i.category, i.location, i.dimensions,
   i.quantity::float8 AS in_stock,
   cu.full_name AS closed_by_name`;
 

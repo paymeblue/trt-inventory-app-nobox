@@ -110,7 +110,7 @@ export function StockAdditionForm({
  */
 export function StockIssueForm({
   source, reservationId, onClose, onSaved,
-}: { source: Source; reservationId?: string | null; onClose: () => void; onSaved: () => void }) {
+}: { source?: Source | null; reservationId?: string | null; onClose: () => void; onSaved: () => void }) {
   const toast = useToast();
   const [open, setOpen] = React.useState<Reservation[] | null>(null);
   const [search, setSearch] = React.useState("");
@@ -122,7 +122,7 @@ export function StockIssueForm({
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    apiFetch<{ items: Reservation[] }>(`/api/reservations?status=OPEN&source=${source}&pageSize=200`)
+    apiFetch<{ items: Reservation[] }>(`/api/reservations?status=OPEN${source ? `&source=${source}` : ""}&pageSize=200`)
       .then((d) => setOpen(d.items))
       .catch(() => setOpen([]));
   }, [source]);
@@ -192,7 +192,7 @@ export function StockIssueForm({
             <option value="">{open ? `Choose one of ${filtered.length} open reservations` : "Loading…"}</option>
             {filtered.map((x) => (
               <option key={x.id} value={x.id}>
-                {x.ref} · {x.project} · {x.sku} | {x.item_name} · {qty(x.balance)} left
+                {x.ref} · {x.reserved_by_name ?? "—"} · {x.project} · {x.sku} | {x.item_name} · {qty(x.balance)} left
               </option>
             ))}
           </Select>
@@ -206,7 +206,10 @@ export function StockIssueForm({
         </div>
         {r ? (
           <Lookup rows={[
+            ["Reserved By", [r.reserved_by_name, r.reserved_by_title].filter(Boolean).join(" · ") || "—"],
+            ["Designer Email", r.reserved_by_email ?? "—"],
             ["Project Name", r.project],
+            ["Purpose / Notes", r.notes ?? "—"],
             ["Material Code", <span key="c" className="code">{r.sku}</span>],
             ["Material Name", r.item_name],
             ["Reserved Qty", n(r.quantity)],

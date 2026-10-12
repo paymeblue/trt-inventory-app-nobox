@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { ScrollText } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
@@ -11,25 +10,23 @@ import { EmptyState } from "@/components/ui/empty";
 import { Pagination } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { SearchInput, useDebounced } from "@/components/search-input";
-import { LiveIndicator, SourceBadge } from "@/components/status";
+import { LiveIndicator, LocationBadge, SourceBadge } from "@/components/status";
 import { useSession } from "@/components/session-context";
 import { useLiveVersion } from "@/components/items/use-items";
 import { apiFetch, toQuery } from "@/lib/client";
-import type { Source } from "@/lib/rbac";
+import { sideOf, SOURCE_LABELS, SOURCES, type Location, type Source } from "@/lib/rbac";
 import { cn, formatDateTime, qty } from "@/lib/utils";
 
-type Kind = "issues" | "additions" | "adjustments";
+type Kind = "additions" | "adjustments";
 
 const TABS: { value: Kind; label: string; description: string }[] = [
-  { value: "issues", label: "Stock Issue Log", description: "Every posted issue against a reservation." },
   { value: "additions", label: "Stock Addition Log", description: "Every posted line of new incoming stock." },
   { value: "adjustments", label: "Stock Adjustment Log", description: "Returns, extra issue, releases, count gains and losses, write-offs, with their signed impacts." },
 ];
 
 type Row = {
   id: string; ref: string; source: Source; created_at: string; by_name: string | null; by_email: string | null;
-  sku: string; item_name: string; unit: string; quantity: number; notes: string | null;
-  reservation_ref?: string | null; project?: string | null;
+  sku: string; item_name: string; unit: string; quantity: number; notes: string | null; location: Location | null;
   supplier_ref?: string | null; document_ref?: string | null;
   related_ref?: string | null; adjustment_type?: string; stock_impact?: number; reserved_impact?: number; issued_impact?: number;
 };
@@ -37,11 +34,11 @@ type Row = {
 const PAGE_SIZE = 50;
 const signed = (v: number | undefined) => (!v ? "0" : v > 0 ? `+${qty(v)}` : qty(v));
 
-/** The workbook's Stock_Issue_Log, Stock_Addition_Log and Stock_Adjustment_Log. */
+/** The workbook's Stock_Addition_Log and Stock_Adjustment_Log. Issues have their own page, /issuance. */
 export function LogsView() {
   const me = useSession();
-  const home = me?.role === "FACTORY_MANAGER" ? "FACTORY" : me?.role === "NOBOX_MANAGER" ? "NOBOX" : "";
-  const [kind, setKind] = React.useState<Kind>("issues");
+  const home = sideOf(me?.role) ?? "";
+  const [kind, setKind] = React.useState<Kind>("additions");
   const [source, setSource] = React.useState(home);
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
@@ -65,16 +62,13 @@ export function LogsView() {
   return (
     <>
       <PageHeader
-        title="Logs"
-        description="The approved movement sources. Every reservation, issue, addition and adjustment, with who posted it and when."
+        title="Stock logs"
+        description="Every addition (by form or Excel import) and every adjustment, with who posted it and when. Issues are in the Issuance Log."
         action={<LiveIndicator syncedAt={liveAt} />}
       />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap rounded-xl border border-border bg-surface-2 p-1" role="tablist">
-          <Link href="/reservations" className="rounded-lg px-3 py-1.5 text-[13px] font-medium text-fg-muted transition-colors hover:text-fg">
-            Reservation Log
-          </Link>
           {TABS.map((t) => (
             <button
               key={t.value}
@@ -100,9 +94,8 @@ export function LogsView() {
           </p>
           <SearchInput value={search} onChange={setSearch} placeholder="Search ID, material, project, person…" className="sm:w-80" />
           <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Side" className="sm:w-36">
-            <option value="">Both sides</option>
-            <option value="FACTORY">Factory</option>
-            <option value="NOBOX">Nobox</option>
+            <option value="">All sides</option>
+            {SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
           </Select>
         </div>
 
@@ -117,7 +110,6 @@ export function LogsView() {
                 <Th>ID</Th>
                 <Th className="hidden md:table-cell">When</Th>
                 <Th>Material</Th>
-                {kind === "issues" ? <><Th>Reservation</Th><Th className="hidden lg:table-cell">Project</Th></> : null}
                 {kind === "additions" ? <><Th className="hidden lg:table-cell">Supplier / Reference</Th><Th className="hidden lg:table-cell">Document Ref</Th></> : null}
                 {kind === "adjustments" ? <><Th>Type</Th><Th className="hidden lg:table-cell">Related ID</Th></> : null}
                 <Th align="right">Qty</Th>
@@ -135,15 +127,10 @@ export function LogsView() {
                     <span className="flex items-center gap-2">
                       <span className="code text-[12.5px] font-semibold">{r.sku}</span>
                       <SourceBadge source={r.source} className="hidden sm:inline-flex" />
+                      <LocationBadge location={r.location} className="hidden sm:inline-flex" />
                     </span>
                     <span className="block max-w-[240px] truncate text-[12px] text-fg-muted">{r.item_name}</span>
                   </Td>
-                  {kind === "issues" ? (
-                    <>
-                      <Td className="code whitespace-nowrap text-[12px]">{r.reservation_ref ?? "—"}</Td>
-                      <Td className="hidden text-[12.5px] lg:table-cell">{r.project ?? "—"}</Td>
-                    </>
-                  ) : null}
                   {kind === "additions" ? (
                     <>
                       <Td className="hidden text-[12.5px] lg:table-cell">{r.supplier_ref ?? "—"}</Td>

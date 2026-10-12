@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
-import { SourceBadge } from "@/components/status";
+import { LocationBadge, SourceBadge } from "@/components/status";
 import type { Item } from "@/components/items/use-items";
 import { useRequiredSession } from "@/components/session-context";
 import { Lookup, MaterialPicker, n, StatusCheck } from "@/components/forms/form-parts";
@@ -20,8 +20,9 @@ export type Reservation = {
   project: string; notes: string | null;
   status: "RESERVED" | "PART_ISSUED" | "ISSUED" | "CANCELLED"; legacy_status: string | null;
   available_at_request: number | null; created_at: string; closed_at: string | null;
-  reserved_by: string | null; reserved_by_name: string | null; reserved_by_email: string | null;
+  reserved_by: string | null; reserved_by_name: string | null; reserved_by_email: string | null; reserved_by_title: string | null;
   item_name: string; sku: string; unit: string; image_id: string | null; category: string | null;
+  location: Item["location"]; dimensions: string | null;
   in_stock: number; closed_by_name: string | null;
 };
 
@@ -127,7 +128,7 @@ export function ReserveModal({
               ["Specification", item.spec],
               ["Dimensions", item.dimensions],
               ["Unit", item.unit],
-              ["From", <SourceBadge key="s" source={item.source} />],
+              ["From", <span key="s" className="inline-flex gap-1"><SourceBadge source={item.source} /><LocationBadge location={item.location} /></span>],
               ["In stock", n(item.quantity)],
               ["Already reserved", <span key="r" className={item.reserved > 0 ? "text-warn" : undefined}>{n(item.reserved)}</span>],
               ["Available Qty", <span key="a" className="tabular font-semibold">{n(item.available)}</span>],

@@ -2,7 +2,7 @@ import * as React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 
-type Tone = "neutral" | "ok" | "warn" | "danger" | "accent" | "info";
+type Tone = "neutral" | "ok" | "warn" | "danger" | "accent" | "info" | "violet" | "teal";
 
 const ICON_TONES: Record<Tone, string> = {
   neutral: "bg-surface-2 text-fg-muted",
@@ -11,6 +11,8 @@ const ICON_TONES: Record<Tone, string> = {
   danger: "bg-danger-soft text-danger",
   accent: "bg-accent-soft text-accent",
   info: "bg-info-soft text-info",
+  violet: "bg-violet-soft text-violet",
+  teal: "bg-teal-soft text-teal",
 };
 
 export function StatCard({

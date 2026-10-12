@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     template: "%s · TRT Nobox Inventory",
   },
   description:
-    "Everything in the TRT Factory and Nobox inventories, in one place.",
+    "Everything in the TRT Factory, Nobox, Ready Cabinets and Germana inventories, in one place.",
 };
 
 export const viewport: Viewport = {

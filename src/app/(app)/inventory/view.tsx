@@ -11,21 +11,22 @@ import { EmptyState } from "@/components/ui/empty";
 import { Pagination } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { ProductImage } from "@/components/product-image";
-import { LiveIndicator, SourceBadge } from "@/components/status";
+import { LiveIndicator, LocationBadge, SourceBadge } from "@/components/status";
 import { ReorderBadge } from "@/components/forms/form-parts";
 import { ItemFilters, useFilters } from "@/components/items/filters";
 import { ItemDetail } from "@/components/items/item-detail";
 import { useItems, type Item } from "@/components/items/use-items";
+import { useSession } from "@/components/session-context";
+import { canReserve, SOURCE_LABELS, SOURCE_LIST, SOURCES, type Source } from "@/lib/rbac";
 import { cn, qty, relativeTime } from "@/lib/utils";
 
 const PAGE_SIZE = 48;
 
 
-const TABS = [
+const TABS: { value: Source | ""; label: string }[] = [
   { value: "", label: "Everything" },
-  { value: "FACTORY", label: "Factory" },
-  { value: "NOBOX", label: "Nobox" },
-] as const;
+  ...SOURCES.map((s) => ({ value: s, label: SOURCE_LABELS[s] })),
+];
 
 export function InventoryView() {
   const [source, setSource] = React.useState("");
@@ -36,6 +37,9 @@ export function InventoryView() {
 
   const { filters, setFilters, params, active } = useFilters();
   const router = useRouter();
+  const me = useSession();
+  // Signed-out visitors still see Reserve; they are asked to sign in first.
+  const reserves = !me || canReserve(me.role);
 
   const { data, loading, error, syncedAt, liveAt, changed, reload } = useItems({ ...params, source, page, pageSize: PAGE_SIZE });
 
@@ -43,11 +47,16 @@ export function InventoryView() {
 
   React.useEffect(() => {
     setPage(1);
-  }, [params.q, params.category, params.status, source]);
+  }, [params.q, params.category, params.status, params.location, source]);
+
+  // Only Nobox has stores to filter by.
+  React.useEffect(() => {
+    if (source !== "NOBOX") setFilters((f) => (f.location ? { ...f, location: "" } : f));
+  }, [source, setFilters]);
 
   const counts = data?.counts;
-  const tabCount = (value: string) =>
-    !counts ? null : value === "FACTORY" ? counts.factory : value === "NOBOX" ? counts.nobox : counts.factory + counts.nobox;
+  const tabCount = (value: Source | "") =>
+    !counts ? null : value ? counts.bySource[value] : SOURCES.reduce((n, s) => n + counts.bySource[s], 0);
 
   const items = data?.items ?? [];
 
@@ -55,19 +64,21 @@ export function InventoryView() {
     <>
       <PageHeader
         title="Inventory"
-        description="Everything in the Factory and at Nobox, in one place. Quantities update on their own."
+        description={`Everything held by ${SOURCE_LIST.replace(" or ", " and ")}, in one place. Quantities update on their own.`}
         action={
           <>
             <LiveIndicator syncedAt={liveAt} error={error} />
-            <Link href="/reserve" className={buttonClass("primary", "md")}>
-              <Bookmark className="h-4 w-4" /> Reservation Form
-            </Link>
+            {reserves ? (
+              <Link href="/reserve" className={buttonClass("primary", "md")}>
+                <Bookmark className="h-4 w-4" /> Reservation Form
+              </Link>
+            ) : null}
           </>
         }
       />
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        <div className="flex rounded-xl border border-border bg-surface-2 p-1" role="tablist">
+        <div className="scrollbar-thin flex max-w-full overflow-x-auto rounded-xl border border-border bg-surface-2 p-1" role="tablist">
           {TABS.map((tab) => (
             <button
               key={tab.value}
@@ -75,7 +86,7 @@ export function InventoryView() {
               aria-selected={source === tab.value}
               onClick={() => setSource(tab.value)}
               className={cn(
-                "flex items-center gap-2 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors sm:px-4",
+                "flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors sm:px-4",
                 source === tab.value ? "bg-surface text-fg shadow-sm" : "text-fg-muted hover:text-fg",
               )}
             >
@@ -121,6 +132,7 @@ export function InventoryView() {
             onChange={setFilters}
             categories={data?.categories ?? []}
             active={active}
+            locations={source === "NOBOX"}
             trailing={
               <div className="hidden shrink-0 items-center gap-0.5 rounded-lg border border-border bg-surface-2 p-0.5 md:flex">
                 {([["grid", LayoutGrid], ["table", ListIcon]] as const).map(([mode, Icon]) => (
@@ -154,7 +166,7 @@ export function InventoryView() {
             description={
               active
                 ? "Try a broader search or clear the filters."
-                : "Items appear here as soon as the Factory or Nobox adds them."
+                : `Items appear here as soon as ${SOURCE_LIST} adds them.`
             }
           />
         ) : view === "grid" ? (
@@ -183,13 +195,16 @@ export function InventoryView() {
                     className="h-full w-full rounded-none border-0 transition-transform duration-300 group-hover:scale-[1.03]"
                     iconClassName="h-7 w-7"
                   />
-                  <SourceBadge source={item.source} className="absolute left-2 top-2 shadow-sm" />
+                  <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+                    <SourceBadge source={item.source} className="shadow-sm" />
+                    <LocationBadge location={item.location} className="bg-surface shadow-sm" />
+                  </div>
                 </div>
                 <div className="flex flex-1 flex-col p-2.5 sm:p-3">
                   <p className="code truncate text-[11px] text-fg-subtle">{item.sku}</p>
                   <h3 className="mt-0.5 line-clamp-2 text-[13.5px] font-medium leading-snug">{item.name}</h3>
                   <p className="mt-1 truncate text-[11.5px] text-fg-subtle">
-                    {[item.category, item.colour].filter(Boolean).join(" · ") || "—"}
+                    {[item.category, item.colour, item.dimensions].filter(Boolean).join(" · ") || "—"}
                   </p>
                   <div className="mt-auto pt-2.5">
                     <div className="flex flex-wrap items-end justify-between gap-2 border-t border-border pt-2.5">
@@ -242,7 +257,12 @@ export function InventoryView() {
                         </span>
                       </div>
                     </Td>
-                    <Td><SourceBadge source={item.source} /></Td>
+                    <Td>
+                      <span className="flex flex-wrap gap-1">
+                        <SourceBadge source={item.source} />
+                        <LocationBadge location={item.location} />
+                      </span>
+                    </Td>
                     <Td className="hidden text-[13px] text-fg-muted lg:table-cell">{item.category ?? "—"}</Td>
                     <Td className="hidden text-[13px] text-fg-muted xl:table-cell">{item.spec ?? "—"}</Td>
                     <Td align="right">
@@ -274,7 +294,7 @@ export function InventoryView() {
         <ItemDetail
           item={items.find((i) => i.id === open.id) ?? open}
           onClose={() => setOpen(null)}
-          onReserve={() => reserve(items.find((i) => i.id === open.id) ?? open)}
+          onReserve={reserves ? () => reserve(items.find((i) => i.id === open.id) ?? open) : undefined}
         />
       ) : null}
 

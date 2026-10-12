@@ -4,14 +4,14 @@ import { Bookmark } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product-image";
-import { SourceBadge } from "@/components/status";
+import { LocationBadge, SourceBadge } from "@/components/status";
 import { ReorderBadge } from "@/components/forms/form-parts";
 import { useSession } from "@/components/session-context";
 import { useOpenReservations } from "@/components/reservations/reserve-modal";
 import { qty, relativeTime } from "@/lib/utils";
 import type { Item } from "./use-items";
 
-export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: () => void; onReserve: () => void }) {
+export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: () => void; onReserve?: () => void }) {
   const session = useSession();
   const reservations = useOpenReservations(item.id, Boolean(session) && item.reserved > 0);
   const rows: [string, string | null][] = [
@@ -34,9 +34,11 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
-          <Button onClick={onReserve} disabled={item.available <= 0}>
-            <Bookmark className="h-4 w-4" /> {item.available > 0 ? "Open in Reservation Form" : "Nothing available"}
-          </Button>
+          {onReserve ? (
+            <Button onClick={onReserve} disabled={item.available <= 0}>
+              <Bookmark className="h-4 w-4" /> {item.available > 0 ? "Open in Reservation Form" : "Nothing available"}
+            </Button>
+          ) : null}
         </>
       }
     >
@@ -45,6 +47,7 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <SourceBadge source={item.source} />
+            <LocationBadge location={item.location} />
             <ReorderBadge status={item.reorder_status} />
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2">

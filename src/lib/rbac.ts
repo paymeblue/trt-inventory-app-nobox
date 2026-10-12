@@ -1,4 +1,4 @@
-export const ROLES = ["ADMIN", "FACTORY_MANAGER", "NOBOX_MANAGER", "DESIGNER"] as const;
+export const ROLES = ["ADMIN", "FACTORY_MANAGER", "NOBOX_MANAGER", "READY_CABINETS_MANAGER", "GERMANA_MANAGER", "DESIGNER"] as const;
 
 export type Role = (typeof ROLES)[number];
 
@@ -6,23 +6,64 @@ export const ROLE_LABELS: Record<Role, string> = {
   ADMIN: "Administrator",
   FACTORY_MANAGER: "Factory Manager",
   NOBOX_MANAGER: "Nobox Manager",
+  READY_CABINETS_MANAGER: "Ready Cabinets Manager",
+  GERMANA_MANAGER: "Germana Manager",
   DESIGNER: "Designer",
 };
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
-  ADMIN: "Manages both inventories and everyone's accounts.",
-  FACTORY_MANAGER: "Adds, edits, removes and uploads Factory items.",
-  NOBOX_MANAGER: "Adds, edits, removes and uploads Nobox items.",
-  DESIGNER: "Sees everything in both inventories. Cannot change anything.",
+  ADMIN: "Manages every inventory and everyone's accounts.",
+  FACTORY_MANAGER: "Updates Factory stock from Excel and issues designers' reservations.",
+  NOBOX_MANAGER: "Updates Nobox stock from Excel and issues designers' reservations.",
+  READY_CABINETS_MANAGER: "Updates Ready Cabinets stock from Excel and issues designers' reservations.",
+  GERMANA_MANAGER: "Updates Germana stock from Excel and issues designers' reservations.",
+  DESIGNER: "Sees every inventory and reserves stock for projects.",
 };
 
-export const SOURCES = ["FACTORY", "NOBOX"] as const;
+export const SOURCES = ["FACTORY", "NOBOX", "READY_CABINETS", "GERMANA"] as const;
 
 export type Source = (typeof SOURCES)[number];
 
-export const SOURCE_LABELS: Record<Source, string> = { FACTORY: "Factory", NOBOX: "Nobox" };
+export const SOURCE_LABELS: Record<Source, string> = {
+  FACTORY: "Factory",
+  NOBOX: "Nobox",
+  READY_CABINETS: "Ready Cabinets",
+  GERMANA: "Germana",
+};
 
-export const SOURCE_PATHS: Record<Source, string> = { FACTORY: "/factory", NOBOX: "/nobox" };
+export const SOURCE_PATHS: Record<Source, string> = {
+  FACTORY: "/factory",
+  NOBOX: "/nobox",
+  READY_CABINETS: "/ready-cabinets",
+  GERMANA: "/germana",
+};
+
+/** Nobox holds stock in two cities; every Nobox material is tagged with one. */
+export const LOCATIONS = ["LAGOS", "ABUJA"] as const;
+
+export type Location = (typeof LOCATIONS)[number];
+
+export const LOCATION_LABELS: Record<Location, string> = { LAGOS: "Lagos", ABUJA: "Abuja" };
+
+export function isLocation(value: unknown): value is Location {
+  return typeof value === "string" && (LOCATIONS as readonly string[]).includes(value);
+}
+
+/** Whether a side's materials carry a Lagos or Abuja location. */
+export function hasLocations(source: Source): boolean {
+  return source === "NOBOX";
+}
+
+/** Each side's inventory team. */
+export const SOURCE_MANAGERS: Record<Source, Role> = {
+  FACTORY: "FACTORY_MANAGER",
+  NOBOX: "NOBOX_MANAGER",
+  READY_CABINETS: "READY_CABINETS_MANAGER",
+  GERMANA: "GERMANA_MANAGER",
+};
+
+/** "Factory, Nobox, Ready Cabinets or Germana". */
+export const SOURCE_LIST = `${SOURCES.slice(0, -1).map((s) => SOURCE_LABELS[s]).join(", ")} or ${SOURCE_LABELS[SOURCES[SOURCES.length - 1]]}`;
 
 export function isRole(value: string): value is Role {
   return (ROLES as readonly string[]).includes(value);
@@ -33,9 +74,22 @@ export function isSource(value: unknown): value is Source {
 }
 
 export function canManage(role: string | null | undefined, source: Source): boolean {
-  if (role === "ADMIN") return true;
-  if (source === "FACTORY") return role === "FACTORY_MANAGER";
-  return role === "NOBOX_MANAGER";
+  return role === "ADMIN" || role === SOURCE_MANAGERS[source];
+}
+
+/** Anyone who runs at least one side's inventory. */
+export function isManager(role: string | null | undefined): boolean {
+  return SOURCES.some((s) => canManage(role, s));
+}
+
+/** Designers reserve; the inventory teams only work on what was reserved. */
+export function canReserve(role: string | null | undefined): boolean {
+  return role === "DESIGNER" || role === "ADMIN";
+}
+
+/** The side a manager works on; null for everyone else. */
+export function sideOf(role: string | null | undefined): Source | null {
+  return SOURCES.find((s) => SOURCE_MANAGERS[s] === role) ?? null;
 }
 
 export function canManageUsers(role: string | null | undefined): boolean {
@@ -44,7 +98,6 @@ export function canManageUsers(role: string | null | undefined): boolean {
 
 /** Where someone lands after signing in. */
 export function homeFor(role: Role): string {
-  if (role === "FACTORY_MANAGER") return SOURCE_PATHS.FACTORY;
-  if (role === "NOBOX_MANAGER") return SOURCE_PATHS.NOBOX;
-  return "/inventory";
+  const side = sideOf(role);
+  return side ? SOURCE_PATHS[side] : "/inventory";
 }

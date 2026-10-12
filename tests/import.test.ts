@@ -2,19 +2,24 @@ import { after, before, beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import type { Pool } from "pg";
 import { importStock } from "../src/lib/items";
-import { TEMPLATE_COLUMNS } from "../src/lib/template";
+import { buildTemplate, templateColumns, type TemplateMaterial } from "../src/lib/template";
+import type { Source } from "../src/lib/rbac";
 import { inTransaction, makeUser, resetSchema, testPool, workbook } from "./db";
 
-const HEADERS = TEMPLATE_COLUMNS.map((c) => c.header);
+const COLUMNS = templateColumns("FACTORY");
+const HEADERS = COLUMNS.map((c) => c.header);
 
 let pool: Pool;
 let userId: string;
 
-/** Uploads a stock sheet to FACTORY through the same code POST /api/items/import runs. */
-function upload(rows: unknown[][], opts: { commit?: boolean; headers?: unknown[] } = {}) {
-  const file = workbook("Inventory_Master", [opts.headers ?? HEADERS, ...rows]);
+/** Uploads a stock sheet (to FACTORY by default) through the same code POST /api/items/import runs. */
+function upload(rows: unknown[][], opts: { commit?: boolean; headers?: unknown[]; source?: Source } = {}) {
+  return uploadFile(workbook("Inventory_Master", [opts.headers ?? HEADERS, ...rows]), opts);
+}
+
+function uploadFile(file: Buffer, opts: { commit?: boolean; source?: Source } = {}) {
   return inTransaction(pool, (client) =>
-    importStock(client, "FACTORY", file, {
+    importStock(client, opts.source ?? "FACTORY", file, {
       userId, userName: "Factory Manager", userEmail: "factory@test.local", filename: "test.xlsx", commit: opts.commit ?? true,
     }),
   );
@@ -35,7 +40,7 @@ async function items() {
 
 /** One template row: Material_Code, Material_Name, Quantity_Added, then any other column by key. */
 const row = (sku: string, name: string, quantity: unknown, extra: Partial<Record<string, unknown>> = {}) =>
-  TEMPLATE_COLUMNS.map((c) =>
+  COLUMNS.map((c) =>
     c.key === "sku" ? sku : c.key === "name" ? name : c.key === "quantity" ? quantity : (extra[c.key] ?? ""),
   );
 
@@ -167,7 +172,100 @@ describe("Excel stock import (Inventory_Master columns)", () => {
     headers[1] = "Item Name";
     const result = await upload([row("FINSA 116", "Board", 10)], { headers });
     assert.equal(result.applied, false);
-    assert.match(result.errors[0].message, /must be exactly/);
+    assert.match(result.errors[0].message, /columns the template does not: Item Name/);
     assert.deepEqual(await items(), []);
+  });
+});
+
+describe("Shared codes and repeated rows", () => {
+  test("one code used for several finishes and sizes makes one material each", async () => {
+    const file = [
+      row("YXJ-0042", "MATT GOLD", 179, { dimensions: "1 METRE" }),
+      row("YXJ-0042", "ROSE GOLD", 19, { dimensions: "1 METRE" }),
+      row("YXJ-0042", "MATT GOLD", 885, { dimensions: "25CM" }),
+    ];
+    assert.equal((await upload(file)).applied, true);
+    assert.deepEqual((await items()).map((i) => [i.name, i.dimensions, i.quantity]).sort(), [
+      ["MATT GOLD", "1 METRE", 179], ["MATT GOLD", "25CM", 885], ["ROSE GOLD", "1 METRE", 19],
+    ]);
+
+    // The same file again tops up each of them rather than creating more.
+    const again = await upload(file);
+    assert.equal(again.applied, true, JSON.stringify(again.errors));
+    assert.deepEqual(again.changes.map((c) => c.action), ["update", "update", "update"]);
+    assert.deepEqual((await items()).map((i) => i.quantity).sort((a, b) => a - b), [38, 358, 1770]);
+  });
+
+  test("a shared code with nothing to tell the materials apart is rejected", async () => {
+    await upload([row("H001", "LED DRIVER", 1), row("H001", "LIGHT WITH PROFILE", 1)]);
+    const result = await upload([row("H001", "", 5)]);
+    assert.equal(result.applied, false);
+    assert.match(result.errors[0].message, /2 materials match H001/);
+  });
+
+  test("a repeated row with no quantity is ignored; with a quantity it is rejected", async () => {
+    const ok = await upload([row("CK 905-6", "TALL UNIT BASKET", 41, { unit: "CARTON" }), row("CK 905-6", "TALL UNIT BASKET", "")]);
+    assert.equal(ok.applied, true, JSON.stringify(ok.errors));
+    assert.deepEqual((await items()).map((i) => [i.quantity, i.unit]), [[41, "CARTON"]]);
+
+    const bad = await upload([row("SV13", "PANT RACK", 3), row("SV13", "PANT RACK", 4)]);
+    assert.equal(bad.applied, false);
+    assert.match(bad.errors[0].message, /already on row 2/);
+  });
+
+  test("the filled-in export uploads again without creating anything", async () => {
+    await upload([row("YXJ-0042", "MATT GOLD", 5, { dimensions: "25CM" }), row("YXJ-0042", "ROSE GOLD", 5), row("", "Brass Knob", 2)]);
+    const { rows: materials } = await pool.query<TemplateMaterial>(
+      `SELECT sku, name, category, subcategory, spec, dimensions, unit, reorder_level::float8 AS reorder_level,
+              reorder_quantity::float8 AS reorder_quantity, description FROM items`,
+    );
+    const result = await uploadFile(buildTemplate("FACTORY", materials));
+    assert.equal(result.applied, true, JSON.stringify(result.errors));
+    assert.deepEqual(result.changes.map((c) => c.action), ["update", "update", "update"]);
+    assert.equal((await items()).length, 3);
+  });
+});
+
+describe("Nobox Lagos and Abuja", () => {
+  const NOBOX = templateColumns("NOBOX").map((c) => c.header);
+  const nobox = (cells: Record<string, unknown>) => NOBOX.map((h) => cells[h] ?? "");
+  const stock = async () =>
+    (await pool.query<{ sku: string; name: string; location: string; quantity: number }>(
+      "SELECT sku, name, location, quantity::float8 AS quantity FROM items WHERE source = 'NOBOX' ORDER BY sku, name, location",
+    )).rows;
+
+  test("each store's quantity goes to that store, and the workbook's own headers are accepted", async () => {
+    const headers = ["Material_Code", "Material_Name", "Category", "Subcategory", "Specification ", "Dimensions (W*D*H)MM", "Unit",
+      "Quantity_Added (lag)", "Quantity_Added (Abj)", "Reorder_Level", "Reorder_Quantity", "Supplier_or_Reference", "Document_Ref", "Notes"];
+    const result = await upload([
+      ["SV13", "PANT RACK", "WARDROBE ACCESSORIES", "TROUSER HANGER", "", "406*430*115", "CARTON", 33, 10, "", "", "", "", ""],
+      ["MG802", "MAGIC CORNER", "KITCHEN ACCESSORIES", "", "", "", "CARTON", 39, "", "", "", "", "", ""],
+      ["GZ09", "ROUND HOOK", "", "", "", "", "PCS", "", "", "", "", "", "", ""],
+    ], { headers, source: "NOBOX" });
+    assert.equal(result.applied, true, JSON.stringify(result.errors));
+    assert.deepEqual(await stock(), [
+      { sku: "GZ09", name: "ROUND HOOK", location: "LAGOS", quantity: 0 },
+      { sku: "MG802", name: "MAGIC CORNER", location: "LAGOS", quantity: 39 },
+      { sku: "SV13", name: "PANT RACK", location: "ABUJA", quantity: 10 },
+      { sku: "SV13", name: "PANT RACK", location: "LAGOS", quantity: 33 },
+    ]);
+  });
+
+  test("an Abuja quantity tops up Abuja only, and a code-less row shares one code across stores", async () => {
+    await upload([nobox({ Material_Code: "SV13", Material_Name: "PANT RACK", "Quantity_Added (Lagos)": 5, "Quantity_Added (Abuja)": 1 })], { headers: NOBOX, source: "NOBOX" });
+    await upload([
+      nobox({ Material_Code: "SV13", "Quantity_Added (Abuja)": 4 }),
+      nobox({ Material_Name: "Brass Knob", "Quantity_Added (Lagos)": 2, "Quantity_Added (Abuja)": 3 }),
+    ], { headers: NOBOX, source: "NOBOX" });
+    assert.deepEqual((await stock()).map((s) => [s.sku, s.location, s.quantity]), [
+      ["BRASS-KNOB", "ABUJA", 3], ["BRASS-KNOB", "LAGOS", 2], ["SV13", "ABUJA", 5], ["SV13", "LAGOS", 5],
+    ]);
+  });
+
+  test("Nobox needs the two store columns and other sides refuse them", async () => {
+    const nb = await upload([row("SV13", "PANT RACK", 1)], { source: "NOBOX" });
+    assert.match(nb.errors[0].message, /split between Lagos and Abuja/);
+    const factory = await upload([nobox({ Material_Code: "SV13", Material_Name: "PANT RACK" })], { headers: NOBOX });
+    assert.match(factory.errors[0].message, /Only Nobox/);
   });
 });

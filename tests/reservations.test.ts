@@ -250,12 +250,12 @@ describe("Cancel and log", () => {
 });
 
 describe("Excel reservation import", () => {
-  const HEADERS = ["Material_Code", "From", "Quantity_Requested", "Project_Name", "Purpose_Notes"];
+  const HEADERS = ["Material_Code", "Material_Name", "From", "Location", "Quantity_Requested", "Project_Name", "Purpose_Notes"];
   const upload = (rows: unknown[][], commit = true) =>
     inTransaction(pool, (c) => importReservations(c, workbook("Reservations", [HEADERS, ...rows]), { who: designer, commit }));
 
   test("valid rows become reservations in the database", async () => {
-    const result = await upload([["finsa 116", "Factory", 3, "DAGGASH", "CLOSETS"]]);
+    const result = await upload([["finsa 116", "", "Factory", "", 3, "DAGGASH", "CLOSETS"]]);
     assert.equal(result.applied, true, JSON.stringify(result.errors));
     const { rows } = await pool.query("SELECT quantity::float8 AS quantity, project, notes, status, designer_email FROM reservations");
     assert.deepEqual(rows, [{ quantity: 3, project: "DAGGASH", notes: "CLOSETS", status: "RESERVED", designer_email: "design@test.local" }]);
@@ -263,8 +263,8 @@ describe("Excel reservation import", () => {
 
   test("rows in one file cannot together reserve more than is available", async () => {
     const result = await upload([
-      ["FINSA 116", "Factory", 6, "Job A", ""],
-      ["FINSA 116", "Factory", 6, "Job B", ""],
+      ["FINSA 116", "", "Factory", "", 6, "Job A", ""],
+      ["FINSA 116", "", "Factory", "", 6, "Job B", ""],
     ]);
     assert.equal(result.applied, false);
     assert.equal(result.errors[0].row, 3);
@@ -275,11 +275,32 @@ describe("Excel reservation import", () => {
 
   test("an unknown code or side is rejected", async () => {
     const result = await upload([
-      ["NOPE-1", "Factory", 1, "Job", ""],
-      ["FINSA 116", "Nobox", 1, "Job", ""],
-      ["FINSA 116", "Warehouse", 1, "Job", ""],
+      ["NOPE-1", "", "Factory", "", 1, "Job", ""],
+      ["FINSA 116", "", "Nobox", "", 1, "Job", ""],
+      ["FINSA 116", "", "Warehouse", "", 1, "Job", ""],
     ]);
     assert.equal(result.applied, false);
     assert.deepEqual(result.errors.map((e) => e.row), [2, 3, 4]);
+  });
+
+  test("a code shared by several materials or stores needs the name or location to pick one", async () => {
+    await pool.query(
+      `INSERT INTO items (source, location, sku, name, unit, opening_qty, quantity) VALUES
+         ('NOBOX', 'LAGOS', 'YXJ-0042', 'MATT GOLD', 'PCS', 5, 5),
+         ('NOBOX', 'LAGOS', 'YXJ-0042', 'ROSE GOLD', 'PCS', 5, 5),
+         ('NOBOX', 'ABUJA', 'YXJ-0042', 'MATT GOLD', 'PCS', 5, 5)`,
+    );
+    const unclear = await upload([
+      ["YXJ-0042", "", "Nobox", "Lagos", 1, "Job", ""],
+      ["YXJ-0042", "MATT GOLD", "Nobox", "", 1, "Job", ""],
+    ], false);
+    assert.deepEqual(unclear.errors.map((e) => e.column), ["Material_Name", "Location"]);
+
+    const result = await upload([["YXJ-0042", "matt gold", "Nobox", "Abuja", 2, "Job", ""]]);
+    assert.equal(result.applied, true, JSON.stringify(result.errors));
+    const { rows } = await pool.query(
+      "SELECT i.location, i.name FROM reservations r JOIN items i ON i.id = r.item_id",
+    );
+    assert.deepEqual(rows, [{ location: "ABUJA", name: "MATT GOLD" }]);
   });
 });

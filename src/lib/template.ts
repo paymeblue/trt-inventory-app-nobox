@@ -1,30 +1,70 @@
 import * as XLSX from "xlsx";
+import { hasLocations, LOCATION_LABELS, SOURCE_LABELS, type Location, type Source } from "./rbac";
 
 /**
  * The stock upload template, on the workbook's Inventory_Master column names.
- * Factory and Nobox use the same one. An upload is only accepted when its first
- * row is exactly these headers, in this order.
+ * Every side uses the same columns, except that Nobox splits Quantity_Added
+ * between its Lagos and Abuja stores. Columns are recognised by their header,
+ * so their order does not matter and common spellings of a header (as in
+ * "Quantity_Added (lag)" or "Dimensions (W*D*H)MM") are accepted.
  */
-export const TEMPLATE_COLUMNS = [
-  { key: "sku", header: "Material_Code", width: 16, rule: "Optional. Matches an existing material, or creates one with this code. If blank, the row matches an existing material by Material_Name, or creates one with a code made from its name." },
-  { key: "name", header: "Material_Name", width: 36, rule: "Required for new materials and whenever Material_Code is blank. Otherwise blank keeps the existing name." },
-  { key: "category", header: "Category", width: 20, rule: "Optional. e.g. BOARDS, EDGE TAPES (PVC), HANDLES. Blank keeps the current value." },
-  { key: "subcategory", header: "Subcategory", width: 26, rule: "Optional. e.g. FINSA (MEASURED IN SHEETS). Blank keeps the current value." },
-  { key: "spec", header: "Specification", width: 16, rule: "Optional. e.g. 18MM. Blank keeps the current value." },
-  { key: "dimensions", header: "Dimensions", width: 14, rule: "Optional. e.g. 60 X 60. Blank keeps the current value." },
-  { key: "unit", header: "Unit", width: 8, rule: "Optional. Sheet, Pcs, Unit, Slab. New materials default to Unit." },
-  { key: "quantity", header: "Quantity_Added", width: 15, rule: "Optional, 0 or more. For a new material it is the Opening_Qty; for an existing one it is posted as a Stock Addition. To remove stock use the Stock Adjustment form." },
-  { key: "reorderLevel", header: "Reorder_Level", width: 14, rule: "Optional. REORDER NOW when available is at or below this; LOW up to 1.25× it." },
-  { key: "reorderQuantity", header: "Reorder_Quantity", width: 16, rule: "Optional. How many to reorder." },
-  { key: "supplierRef", header: "Supplier_or_Reference", width: 22, rule: "Optional. Recorded on the Stock Addition." },
-  { key: "documentRef", header: "Document_Ref", width: 14, rule: "Optional. Recorded on the Stock Addition." },
-  { key: "notes", header: "Notes", width: 30, rule: "Optional. Kept on the material." },
-] as const;
+type Column = { key: TemplateKey; header: string; width: number; rule: string; aliases: string[] };
 
-export type TemplateKey = (typeof TEMPLATE_COLUMNS)[number]["key"];
+export type TemplateKey =
+  | "sku" | "name" | "category" | "subcategory" | "spec" | "dimensions" | "unit"
+  | "quantity" | "quantityLagos" | "quantityAbuja"
+  | "reorderLevel" | "reorderQuantity" | "supplierRef" | "documentRef" | "notes";
+
+const QUANTITY_RULE =
+  "Optional, 0 or more. For a new material it is the Opening_Qty; for an existing one it is posted as a Stock Addition. To remove stock use the Stock Adjustment form.";
+
+const ALL_COLUMNS: Column[] = [
+  { key: "sku", header: "Material_Code", width: 16, aliases: ["code", "sku", "materialcode"],
+    rule: "Optional. The code on the material. Several materials may share a code (one per finish or size) when their name, specification or dimensions differ. If blank, the row is matched by Material_Name, or the material gets a code made from its name." },
+  { key: "name", header: "Material_Name", width: 36, aliases: ["name", "materialname"],
+    rule: "Required for new materials and whenever Material_Code is blank. On an existing material, blank keeps its name." },
+  { key: "category", header: "Category", width: 22, aliases: ["category"],
+    rule: "Optional. e.g. WARDROBE ACCESSORIES, KITCHEN ACCESSORIES, HANDLE. Blank keeps the current value." },
+  { key: "subcategory", header: "Subcategory", width: 22, aliases: ["subcategory", "subcat"],
+    rule: "Optional. e.g. TROUSER HANGER, MAGIC CORNER. Blank keeps the current value." },
+  { key: "spec", header: "Specification", width: 16, aliases: ["specification", "spec", "specs"],
+    rule: "Optional. e.g. 18MM, 12 VOLTS. Blank keeps the current value." },
+  { key: "dimensions", header: "Dimensions (W*D*H)MM", width: 20, aliases: ["dimensions", "dimension", "dimensionswdhmm", "dimensionswdh", "dimensionsmm", "size"],
+    rule: "Optional. Width*Depth*Height in millimetres, e.g. 864*545*545. Blank keeps the current value." },
+  { key: "unit", header: "Unit", width: 9, aliases: ["unit", "uom"],
+    rule: "Optional. e.g. PCS, PACK, CARTON, SHEET, ROLL. New materials default to Unit." },
+  { key: "quantity", header: "Quantity_Added", width: 15, aliases: ["quantityadded", "quantity", "qty", "qtyadded"], rule: QUANTITY_RULE },
+  { key: "quantityLagos", header: "Quantity_Added (Lagos)", width: 21,
+    aliases: ["quantityaddedlagos", "quantityaddedlag", "quantitylagos", "quantitylag", "qtylagos", "qtylag", "lagos", "lag"],
+    rule: `${QUANTITY_RULE} Goes to the Lagos store.` },
+  { key: "quantityAbuja", header: "Quantity_Added (Abuja)", width: 21,
+    aliases: ["quantityaddedabuja", "quantityaddedabj", "quantityabuja", "quantityabj", "qtyabuja", "qtyabj", "abuja", "abj"],
+    rule: `${QUANTITY_RULE} Goes to the Abuja store.` },
+  { key: "reorderLevel", header: "Reorder_Level", width: 14, aliases: ["reorderlevel", "reorderpoint", "minlevel"],
+    rule: "Optional. REORDER NOW when available is at or below this; LOW up to 1.25× it." },
+  { key: "reorderQuantity", header: "Reorder_Quantity", width: 16, aliases: ["reorderquantity", "reorderqty"],
+    rule: "Optional. How many to reorder." },
+  { key: "supplierRef", header: "Supplier_or_Reference", width: 22, aliases: ["supplierorreference", "supplier", "supplierref", "reference"],
+    rule: "Optional. Recorded on the Stock Addition." },
+  { key: "documentRef", header: "Document_Ref", width: 14, aliases: ["documentref", "docref", "document", "invoice"],
+    rule: "Optional. Recorded on the Stock Addition." },
+  { key: "notes", header: "Notes", width: 30, aliases: ["notes", "note", "remarks", "comments"],
+    rule: "Optional. Kept on the material." },
+];
+
+/** The columns of one side's template, in the order the template lays them out. */
+export function templateColumns(source: Source): Column[] {
+  const skip: TemplateKey[] = hasLocations(source) ? ["quantity"] : ["quantityLagos", "quantityAbuja"];
+  return ALL_COLUMNS.filter((c) => !skip.includes(c.key));
+}
+
+const LOCATION_COLUMNS: Record<Location, TemplateKey> = { LAGOS: "quantityLagos", ABUJA: "quantityAbuja" };
 
 export const TEMPLATE_SHEET = "Inventory_Master";
 export const MAX_ROWS = 5000;
+
+/** Where a row's quantity goes: one entry per location (a single null-location entry off Nobox). */
+export type RowQuantity = { location: Location | null; quantity: number | null };
 
 export type TemplateRow = {
   /** Spreadsheet row number, as the user sees it in Excel. */
@@ -37,7 +77,8 @@ export type TemplateRow = {
   spec: string | null;
   dimensions: string | null;
   unit: string | null;
-  quantity: number;
+  /** Null quantity means the cell was blank. */
+  quantities: RowQuantity[];
   reorderLevel: number | null;
   reorderQuantity: number | null;
   supplierRef: string | null;
@@ -47,31 +88,64 @@ export type TemplateRow = {
 
 export type TemplateError = { row: number | null; column: string | null; message: string };
 
-export function buildTemplate(): Buffer {
+/** A material as the filled-in template lists it. */
+export type TemplateMaterial = {
+  sku: string; name: string; category: string | null; subcategory: string | null; spec: string | null;
+  dimensions: string | null; unit: string; reorder_level: number; reorder_quantity: number; description: string | null;
+};
+
+const EXAMPLES: Partial<Record<TemplateKey, string | number>>[] = [
+  { sku: "SV13", name: "PANT RACK", category: "WARDROBE ACCESSORIES", subcategory: "TROUSER HANGER", dimensions: "406*430*115", unit: "CARTON",
+    quantity: 33, quantityLagos: 33, quantityAbuja: 10, reorderLevel: 5, reorderQuantity: 20, supplierRef: "Supplier name", documentRef: "INV-0001" },
+  { sku: "YXJ-0042", name: "MATT GOLD", category: "HANDLE", spec: "", dimensions: "1 METRE", unit: "PCS", quantity: 179, quantityLagos: 179 },
+  { sku: "YXJ-0042", name: "MATT GOLD", category: "HANDLE", dimensions: "25CM", unit: "PCS", quantity: 885, quantityLagos: 885, quantityAbuja: "" },
+];
+
+/**
+ * The template for one side. With `materials` it comes back filled in with
+ * that side's current materials (quantities left blank), ready to edit and
+ * upload again.
+ */
+export function buildTemplate(source: Source, materials: TemplateMaterial[] = []): Buffer {
+  const columns = templateColumns(source);
   const book = XLSX.utils.book_new();
 
-  const items = XLSX.utils.aoa_to_sheet([TEMPLATE_COLUMNS.map((c) => c.header)]);
-  items["!cols"] = TEMPLATE_COLUMNS.map((c) => ({ wch: c.width }));
-  items["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(TEMPLATE_COLUMNS.length - 1)}1` };
-  XLSX.utils.book_append_sheet(book, items, TEMPLATE_SHEET);
+  const valueOf = (m: TemplateMaterial, key: TemplateKey): string | number => {
+    const v = {
+      sku: m.sku, name: m.name, category: m.category, subcategory: m.subcategory, spec: m.spec, dimensions: m.dimensions,
+      unit: m.unit, reorderLevel: m.reorder_level || "", reorderQuantity: m.reorder_quantity || "", notes: m.description,
+    }[key as string];
+    return v ?? "";
+  };
+  const sheet = XLSX.utils.aoa_to_sheet([
+    columns.map((c) => c.header),
+    ...materials.map((m) => columns.map((c) => valueOf(m, c.key))),
+  ]);
+  sheet["!cols"] = columns.map((c) => ({ wch: c.width }));
+  sheet["!autofilter"] = { ref: `A1:${XLSX.utils.encode_col(columns.length - 1)}${Math.max(1, materials.length + 1)}` };
+  XLSX.utils.book_append_sheet(book, sheet, TEMPLATE_SHEET);
 
+  const side = SOURCE_LABELS[source];
   const guide = XLSX.utils.aoa_to_sheet([
-    ["TRT Nobox stock upload template"],
+    [`TRT Nobox stock upload template · ${side}`],
     [],
-    ["Fill in the Inventory_Master sheet, one row per material, and upload it from the Factory or Nobox dashboard."],
-    ["Do not rename, reorder, add or remove columns. A file whose headers differ is rejected."],
+    [`Fill in the ${TEMPLATE_SHEET} sheet, one row per material, and upload it with Import from Excel on the ${side} dashboard.`],
+    ...(hasLocations(source)
+      ? [[`${side} stock is held in Lagos and Abuja. Put each store's quantity in its own column. A row with quantities in both creates or updates the material in both stores. A new material with both blank is created in Lagos.`]]
+      : []),
+    ["Keep the header row. Columns are matched by name, so their order does not matter and optional columns may be left out, but unknown columns are rejected."],
     ["If any row has a problem, nothing is uploaded. Fix the rows listed and upload again."],
-    ["Each Material_Code (or, for rows without one, each Material_Name) may appear only once per file."],
+    ["A material should appear once per file. A repeated row with no quantity is ignored."],
+    ["Product photos are added in the app after uploading: click the photo square beside a material in Inventory_Master."],
     [],
     ["Column", "Rule"],
-    ...TEMPLATE_COLUMNS.map((c) => [c.header, c.rule]),
+    ...columns.map((c) => [c.header, c.rule]),
     [],
     ["Example rows (for reference only, do not paste into Inventory_Master unless you mean them)"],
-    TEMPLATE_COLUMNS.map((c) => c.header),
-    ["FINSA 116", "LISSA OAK 18MM", "BOARDS", "FINSA (MEASURED IN SHEETS)", "18MM", "", "Sheet", 58, 2, 4, "Finsa Lagos", "INV-2231", ""],
-    ["LCQD 106", "DRAWER FACE (OFFWHITE) FLAT", "BOARDS", "LACQUERED (MEASURED IN PCS)", "", "60 X 60", "Pcs", 9, 2, 4, "", "", ""],
+    columns.map((c) => c.header),
+    ...EXAMPLES.map((e) => columns.map((c) => e[c.key] ?? "")),
   ]);
-  guide["!cols"] = [{ wch: 22 }, { wch: 110 }];
+  guide["!cols"] = [{ wch: 24 }, { wch: 120 }];
   XLSX.utils.book_append_sheet(book, guide, "Instructions");
 
   return XLSX.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer;
@@ -80,7 +154,7 @@ export function buildTemplate(): Buffer {
 export function text(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (value instanceof Date) return value.toISOString().slice(0, 10);
-  return String(value).trim();
+  return String(value).replace(/\s+/g, " ").trim();
 }
 
 export function number(value: unknown): number | null {
@@ -91,13 +165,16 @@ export function number(value: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+const normalise = (header: string) => header.toLowerCase().replace(/[^a-z0-9]/g, "");
+
 /**
- * Reads an uploaded workbook against the template. Returns the rows that are
- * well formed plus every problem found. `fatal` means the file itself is wrong
- * (unreadable, wrong headers, empty), so there is nothing further to check.
+ * Reads an uploaded workbook against one side's template. Returns the rows
+ * that are well formed plus every problem found. `fatal` means the file itself
+ * is wrong (unreadable, wrong headers, empty), so there is nothing further to check.
  */
 export function parseTemplate(
   buffer: Buffer,
+  source: Source,
 ): { rows: TemplateRow[]; errors: TemplateError[]; fatal: boolean } {
   const fatal = (message: string, row: number | null = null) => ({
     rows: [],
@@ -122,22 +199,34 @@ export function parseTemplate(
     raw: true,
   });
 
+  const side = SOURCE_LABELS[source];
+  const columns = templateColumns(source);
+  const expected = columns.map((c) => c.header).join(", ");
+  const index = new Map<TemplateKey, number>();
+  const unknown: string[] = [];
   const headers = (matrix[0] ?? []).map(text);
-  while (headers.length && headers[headers.length - 1] === "") headers.pop();
-  const expected = TEMPLATE_COLUMNS.map((c) => c.header);
-  const matches =
-    headers.length === expected.length &&
-    headers.every((h, i) => h.toLowerCase() === expected[i].toLowerCase());
-  if (!matches) {
-    return fatal(
-      `Row 1 of "${sheetName}" must be exactly: ${expected.join(", ")}. Found: ${headers.join(", ") || "nothing"}. Download a fresh template.`,
-      1,
-    );
+  for (const [i, h] of headers.entries()) {
+    if (!h) continue;
+    const column = ALL_COLUMNS.find((c) => c.aliases.includes(normalise(h)));
+    if (!column) unknown.push(h);
+    else if (index.has(column.key)) return fatal(`Row 1 has two ${column.header} columns. Keep one.`, 1);
+    else index.set(column.key, i);
+  }
+  if (unknown.length) {
+    return fatal(`Row 1 of "${sheetName}" has columns the template does not: ${unknown.join(", ")}. The ${side} template's columns are: ${expected}. Download a fresh template.`, 1);
+  }
+  if (!index.has("sku") || !index.has("name")) {
+    return fatal(`Row 1 of "${sheetName}" needs Material_Code and Material_Name columns. The ${side} template's columns are: ${expected}.`, 1);
+  }
+  if (hasLocations(source) && index.has("quantity")) {
+    return fatal(`${side} stock is split between Lagos and Abuja. Replace Quantity_Added with Quantity_Added (Lagos) and Quantity_Added (Abuja). Download a fresh ${side} template.`, 1);
+  }
+  if (!hasLocations(source) && (index.has("quantityLagos") || index.has("quantityAbuja"))) {
+    return fatal(`Only Nobox stock is split between Lagos and Abuja. Use a single Quantity_Added column for ${side}. Download a fresh ${side} template.`, 1);
   }
 
   const rows: TemplateRow[] = [];
   const errors: TemplateError[] = [];
-  const seen = new Map<string, number>();
   let dataRows = 0;
 
   for (let i = 1; i < matrix.length; i += 1) {
@@ -150,8 +239,8 @@ export function parseTemplate(
     }
     const errorsBefore = errors.length;
 
-    const cell = (key: TemplateKey) => cells[TEMPLATE_COLUMNS.findIndex((c) => c.key === key)];
-    const header = (key: TemplateKey) => TEMPLATE_COLUMNS.find((c) => c.key === key)!.header;
+    const cell = (key: TemplateKey) => (index.has(key) ? cells[index.get(key)!] : "");
+    const header = (key: TemplateKey) => ALL_COLUMNS.find((c) => c.key === key)!.header;
     const fail = (key: TemplateKey | null, message: string) =>
       errors.push({ row: rowNo, column: key ? header(key) : null, message });
     const optionalNumber = (key: TemplateKey) => {
@@ -167,15 +256,12 @@ export function parseTemplate(
 
     const sku = text(cell("sku")).toUpperCase();
     const name = text(cell("name"));
-    // Rows without a code are identified by their name instead.
-    const key = sku ? `sku:${sku.toLowerCase()}` : `name:${name.toLowerCase()}`;
     if (!sku && !name) fail("sku", "Give a Material_Code or a Material_Name, so the row can be matched to a material.");
-    else if (sku.length > 48) fail("sku", "Material_Code must be 48 characters or fewer.");
-    else if (seen.has(key)) {
-      fail(sku ? "sku" : "name", `${sku || name} is already on row ${seen.get(key)}. Each material may appear once per file.`);
-    } else seen.set(key, rowNo);
+    else if (sku.length > 100) fail("sku", "Material_Code must be 100 characters or fewer.");
 
-    const quantity = optionalNumber("quantity") ?? 0;
+    const quantities: RowQuantity[] = hasLocations(source)
+      ? (Object.keys(LOCATION_COLUMNS) as Location[]).map((location) => ({ location, quantity: optionalNumber(LOCATION_COLUMNS[location]) }))
+      : [{ location: null, quantity: optionalNumber("quantity") }];
     const reorderLevel = optionalNumber("reorderLevel");
     const reorderQuantity = optionalNumber("reorderQuantity");
 
@@ -190,7 +276,7 @@ export function parseTemplate(
       spec: opt("spec"),
       dimensions: opt("dimensions"),
       unit: opt("unit"),
-      quantity,
+      quantities,
       reorderLevel,
       reorderQuantity,
       supplierRef: opt("supplierRef"),
@@ -201,4 +287,9 @@ export function parseTemplate(
 
   if (!dataRows) return fatal(`The "${sheetName}" sheet has headers but no rows.`);
   return { rows, errors, fatal: false };
+}
+
+/** "Lagos" / "Abuja" / "" for a location, for messages. */
+export function placeLabel(location: Location | null): string {
+  return location ? LOCATION_LABELS[location] : "";
 }

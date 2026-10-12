@@ -13,14 +13,14 @@ import { Pagination } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { SearchInput, useDebounced } from "@/components/search-input";
-import { LiveIndicator, SourceBadge } from "@/components/status";
+import { LiveIndicator, LocationBadge, SourceBadge } from "@/components/status";
 import { useRequiredSession } from "@/components/session-context";
 import { useLiveVersion } from "@/components/items/use-items";
 import { ReserveModal, type Reservation } from "@/components/reservations/reserve-modal";
 import { ReserveUploadModal } from "@/components/reservations/reserve-upload-modal";
 import { StockIssueForm } from "@/components/forms/stock-forms";
 import { apiFetch, toQuery } from "@/lib/client";
-import { canManage, type Source } from "@/lib/rbac";
+import { canManage, canReserve, sideOf, SOURCE_LABELS, SOURCES, type Source } from "@/lib/rbac";
 import { cn, formatDateTime, qty, relativeTime } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
@@ -49,7 +49,8 @@ type Response = {
 export function ReservationsView() {
   const me = useRequiredSession();
   const toast = useToast();
-  const home: Source | "" = me.role === "FACTORY_MANAGER" ? "FACTORY" : me.role === "NOBOX_MANAGER" ? "NOBOX" : "";
+  const home: Source | "" = sideOf(me.role) ?? "";
+  const reserves = canReserve(me.role);
   const [status, setStatus] = React.useState<string>("OPEN");
   const [source, setSource] = React.useState<string>(home);
   const [mine, setMine] = React.useState(me.role === "DESIGNER");
@@ -85,12 +86,18 @@ export function ReservationsView() {
     <>
       <PageHeader
         title="Reservation Log"
-        description="Stock designers have set aside. The inventory team issues it, in full or in part, when it leaves the store for production; only then is it deducted."
+        description={reserves
+          ? "Stock you and the other designers have set aside. The inventory team holding it issues it when it leaves the store for production; only then is it deducted."
+          : "What designers have reserved. Issue it, in full or in part, when it leaves the store for production; only then is it deducted."}
         action={
           <>
             <LiveIndicator syncedAt={liveAt} />
-            <Button variant="secondary" onClick={() => setCreating("excel")}><FileSpreadsheet className="h-4 w-4" /> Reserve from Excel</Button>
-            <Button onClick={() => setCreating("form")}><Plus className="h-4 w-4" /> New reservation</Button>
+            {reserves ? (
+              <>
+                <Button variant="secondary" onClick={() => setCreating("excel")}><FileSpreadsheet className="h-4 w-4" /> Reserve from Excel</Button>
+                <Button onClick={() => setCreating("form")}><Plus className="h-4 w-4" /> New reservation</Button>
+              </>
+            ) : null}
           </>
         }
       />
@@ -118,14 +125,15 @@ export function ReservationsView() {
           <SearchInput value={search} onChange={setSearch} placeholder="Search REQ number, project, material code or name, designer…" className="sm:flex-1" />
           <div className="grid grid-cols-2 gap-2 sm:flex">
             <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Side" className="sm:w-36">
-              <option value="">Both sides</option>
-              <option value="FACTORY">Factory</option>
-              <option value="NOBOX">Nobox</option>
+              <option value="">All sides</option>
+              {SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
             </Select>
-            <Select value={mine ? "mine" : "all"} onChange={(e) => setMine(e.target.value === "mine")} aria-label="Whose" className="sm:w-40">
-              <option value="all">Everyone&apos;s</option>
-              <option value="mine">Only mine</option>
-            </Select>
+            {reserves ? (
+              <Select value={mine ? "mine" : "all"} onChange={(e) => setMine(e.target.value === "mine")} aria-label="Whose" className="sm:w-40">
+                <option value="all">Everyone&apos;s</option>
+                <option value="mine">Only mine</option>
+              </Select>
+            ) : null}
           </div>
         </div>
 
@@ -147,7 +155,7 @@ export function ReservationsView() {
                 <Th align="right">Reserved</Th>
                 <Th align="right" className="hidden md:table-cell">Issued</Th>
                 <Th align="right">Balance</Th>
-                <Th className="hidden lg:table-cell">Designer</Th>
+                <Th className="hidden lg:table-cell">Reserved By</Th>
                 <Th align="center">Status</Th>
                 <Th align="right"><span className="sr-only">Actions</span></Th>
               </tr>
@@ -166,8 +174,9 @@ export function ReservationsView() {
                       <span className="flex items-center gap-2">
                         <span className="code shrink-0 text-[12.5px] font-semibold">{r.sku}</span>
                         <SourceBadge source={r.source} className="hidden sm:inline-flex" />
+                        <LocationBadge location={r.location} className="hidden sm:inline-flex" />
                       </span>
-                      <span className="block max-w-[260px] truncate text-[12.5px] text-fg-muted">{r.item_name}</span>
+                      <span className="block max-w-[260px] truncate text-[12.5px] text-fg-muted">{[r.item_name, r.dimensions].filter(Boolean).join(" · ")}</span>
                     </Td>
                     <Td className="text-[13px]">
                       {r.project}
@@ -180,6 +189,7 @@ export function ReservationsView() {
                     </Td>
                     <Td className="hidden whitespace-nowrap text-[12.5px] text-fg-muted lg:table-cell">
                       {r.reserved_by === me.sub ? "You" : r.reserved_by_name ?? r.reserved_by_email ?? "—"}
+                      {r.reserved_by !== me.sub && r.reserved_by_title ? <span className="block text-[11.5px] text-fg-subtle">{r.reserved_by_title}</span> : null}
                       {r.closed_by_name ? <span className="block text-[11.5px] text-fg-subtle">closed by {r.closed_by_name}</span> : null}
                     </Td>
                     <Td align="center">

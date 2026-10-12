@@ -1,8 +1,8 @@
 import type { PoolClient } from "pg";
 import { HttpError } from "./session";
 import { slugToSku } from "./utils";
-import type { Source } from "./rbac";
-import { parseTemplate, type TemplateError, type TemplateRow } from "./template";
+import type { Location, Source } from "./rbac";
+import { parseTemplate, placeLabel, type TemplateError, type TemplateRow } from "./template";
 
 export type MovementKind = "CREATE" | "ADJUST" | "IMPORT" | "ISSUE" | "ADDITION" | "OPENING";
 
@@ -38,7 +38,7 @@ export type ReorderStatus = (typeof REORDER_STATUSES)[number];
 
 /** Every column the item screens read. */
 export const ITEM_COLUMNS = `
-  i.id, i.source, i.sku, i.name, i.category, i.subcategory, i.spec, i.dimensions, i.colour, i.unit,
+  i.id, i.source, i.location, i.sku, i.name, i.category, i.subcategory, i.spec, i.dimensions, i.colour, i.unit,
   i.opening_qty::float8 AS opening_qty,
   i.quantity::float8 AS quantity, i.reorder_level::float8 AS reorder_level,
   i.reorder_quantity::float8 AS reorder_quantity, i.bad_qty::float8 AS bad_qty,
@@ -90,6 +90,8 @@ export type ImportChange = {
   row: number;
   sku: string;
   name: string;
+  /** Lagos or Abuja on Nobox; null elsewhere. */
+  location: Location | null;
   action: "create" | "update";
   before: number;
   delta: number;
@@ -98,11 +100,39 @@ export type ImportChange = {
 
 type Uploader = { userId: string; userName: string; userEmail: string; filename: string };
 
+/** A material the upload can match a row to: one already stored, or one an earlier row creates. */
+type Target = {
+  id: string | null;
+  sku: string;
+  name: string;
+  subcategory: string | null;
+  spec: string | null;
+  dimensions: string | null;
+  location: Location | null;
+  quantity: number;
+  /** The row of this file that already wrote to it. */
+  usedBy: number | null;
+};
+
+const same = (a: string | null, b: string | null) => (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
+
+/** Name, subcategory, specification and dimensions, together with the code, tell materials apart. */
+const DESCRIBING = ["name", "subcategory", "spec", "dimensions"] as const;
+
+const describe = (t: Pick<Target, "sku" | "name" | "dimensions" | "spec">) =>
+  [t.sku, t.name, t.spec, t.dimensions].filter(Boolean).join(" · ");
+
 /**
  * Applies template rows to one side's inventory inside the caller's transaction.
- * A new material starts with Quantity_Added as its Opening_Qty; on an existing
- * one it is posted as a Stock Addition. Everything is validated first, so either
+ * A new material starts with its quantity as its Opening_Qty; on an existing
+ * one it is posted as a Stock Addition. On Nobox each row is applied to the
+ * Lagos and Abuja stores separately. Everything is validated first, so either
  * every row is applied or none is. With `dryRun` it only reports what would happen.
+ *
+ * A row is matched by its Material_Code (or, without one, its Material_Name).
+ * Where that is shared by several materials, as the workbook does for each
+ * finish and size of a handle, the row's name, subcategory, specification and
+ * dimensions pick the one it means; if none fits, it is a new material.
  */
 export async function applyImport(
   client: PoolClient,
@@ -110,12 +140,12 @@ export async function applyImport(
   rows: TemplateRow[],
   opts: Uploader & { dryRun: boolean },
 ): Promise<{ changes: ImportChange[]; errors: TemplateError[] }> {
-  type Existing = { id: string; sku: string; name: string; quantity: number };
-  const { rows: existing } = await client.query<Existing>(
-    `SELECT i.id, i.sku, i.name, i.quantity::float8 AS quantity
+  const { rows: existing } = await client.query<Omit<Target, "usedBy">>(
+    `SELECT i.id, i.sku, i.name, i.subcategory, i.spec, i.dimensions, i.location, i.quantity::float8 AS quantity
        FROM items i
       WHERE i.source = $1
         AND (lower(i.sku) = ANY($2::text[]) OR lower(i.name) = ANY($3::text[]))
+      ORDER BY i.created_at
       FOR UPDATE`,
     [
       source,
@@ -123,13 +153,11 @@ export async function applyImport(
       rows.filter((r) => !r.sku).map((r) => r.name!.toLowerCase()),
     ],
   );
-  const bySku = new Map(existing.map((e) => [e.sku.toLowerCase(), e]));
-  const byName = new Map<string, Existing[]>();
-  for (const e of existing) byName.set(e.name.toLowerCase(), [...(byName.get(e.name.toLowerCase()) ?? []), e]);
+  const targets: Target[] = existing.map((e) => ({ ...e, usedBy: null }));
 
-  // Every code already used on this side or claimed earlier in the file, so a
+  // Every code already used on this side or claimed in the file, so a
   // generated code never collides with either.
-  const { rows: taken } = await client.query<{ sku: string }>("SELECT lower(sku) AS sku FROM items WHERE source = $1", [source]);
+  const { rows: taken } = await client.query<{ sku: string }>("SELECT DISTINCT lower(sku) AS sku FROM items WHERE source = $1", [source]);
   const usedSkus = new Set([...taken.map((t) => t.sku), ...rows.filter((r) => r.sku).map((r) => r.sku!.toLowerCase())]);
   const generateSku = (name: string) => {
     const base = (slugToSku(name) || "ITEM").slice(0, 40);
@@ -139,64 +167,112 @@ export async function applyImport(
     return candidate;
   };
 
+  // How often each code (or, for rows without one, each name) appears in the file.
+  const keyOf = (r: TemplateRow) => (r.sku ? `sku:${r.sku.toLowerCase()}` : `name:${r.name!.toLowerCase()}`);
+  const repeats = new Map<string, number>();
+  for (const r of rows) repeats.set(keyOf(r), (repeats.get(keyOf(r)) ?? 0) + 1);
+
+  type Resolved = { kind: "match"; target: Target } | { kind: "new" } | { kind: "ambiguous"; targets: Target[] };
+  const resolve = (r: TemplateRow, location: Location | null): Resolved => {
+    const pool = targets.filter((t) => t.location === location && (r.sku ? same(t.sku, r.sku) : same(t.name, r.name)));
+    // A code (or name) used once, here and in the file, is the material: the
+    // row may rename it or change its details.
+    if (pool.length === 1 && repeats.get(keyOf(r)) === 1) return { kind: "match", target: pool[0] };
+    const fits = pool.filter((t) => DESCRIBING.every((f) => r[f] === null || same(t[f], r[f])));
+    if (fits.length === 1) return { kind: "match", target: fits[0] };
+    return fits.length ? { kind: "ambiguous", targets: fits } : { kind: "new" };
+  };
+
   const errors: TemplateError[] = [];
   const changes: ImportChange[] = [];
-  const plan = new Map<number, { found: Existing | null; sku: string }>();
+  type Step = { row: TemplateRow; location: Location | null; quantity: number; target: Target; create: boolean };
+  const steps: Step[] = [];
 
   for (const r of rows) {
-    let found: Existing | null = null;
-    if (r.sku) {
-      found = bySku.get(r.sku.toLowerCase()) ?? null;
-    } else {
-      const matches = byName.get(r.name!.toLowerCase()) ?? [];
-      if (matches.length > 1) {
+    // Blank quantities everywhere: update the material wherever it is held,
+    // or create it in the first store (Lagos on Nobox).
+    const given = r.quantities.filter((q) => q.quantity !== null);
+    const held = r.quantities.filter((q) => resolve(r, q.location).kind !== "new");
+    const wanted = given.length ? given : held.length ? held : [r.quantities[0]];
+
+    let sku = r.sku;
+    const created: Target[] = [];
+    for (const { location, quantity } of wanted) {
+      const where = location ? ` in ${placeLabel(location)}` : "";
+      const res = resolve(r, location);
+      if (res.kind === "ambiguous") {
         errors.push({
           row: r.row,
-          column: "Material_Code",
-          message: `${matches.length} materials are called ${r.name} (${matches.map((m) => m.sku).join(", ")}). Add the Material_Code to say which one.`,
+          column: r.sku ? "Material_Code" : "Material_Name",
+          message: `${res.targets.length} materials${where} match ${r.sku ?? r.name} (${res.targets.map(describe).join("; ")}). Add the Material_Code, Specification or Dimensions to say which one.`,
         });
         continue;
       }
-      found = matches[0] ?? null;
-    }
-
-    if (!found) {
-      if (!r.name) {
-        errors.push({ row: r.row, column: "Material_Name", message: `${r.sku} is new, so it needs a Material_Name.` });
+      if (res.kind === "match") {
+        const t = res.target;
+        if (t.usedBy !== null) {
+          if (quantity !== null) {
+            errors.push({
+              row: r.row,
+              column: r.sku ? "Material_Code" : "Material_Name",
+              message: `${describe(t)}${where} is already on row ${t.usedBy}. Put its whole quantity on one row.`,
+            });
+          }
+          continue;
+        }
+        t.usedBy = r.row;
+        sku = t.sku;
+        steps.push({ row: r, location, quantity: quantity ?? 0, target: t, create: false });
+        continue;
       }
-      const sku = r.sku ?? generateSku(r.name ?? "");
-      plan.set(r.row, { found: null, sku });
-      changes.push({ row: r.row, sku, name: r.name ?? sku, action: "create", before: 0, delta: r.quantity, after: r.quantity });
-    } else {
-      plan.set(r.row, { found, sku: found.sku });
-      changes.push({
-        row: r.row, sku: found.sku, name: r.name ?? found.name, action: "update",
-        before: found.quantity, delta: r.quantity, after: found.quantity + r.quantity,
-      });
+      if (!r.name) {
+        errors.push({ row: r.row, column: "Material_Name", message: `${r.sku}${where} is new, so it needs a Material_Name.` });
+        continue;
+      }
+      const t: Target = {
+        id: null, sku: "", name: r.name, subcategory: r.subcategory, spec: r.spec, dimensions: r.dimensions,
+        location, quantity: 0, usedBy: r.row,
+      };
+      targets.push(t);
+      created.push(t);
+      steps.push({ row: r, location, quantity: quantity ?? 0, target: t, create: true });
     }
+    // The same material in Lagos and Abuja shares one code, generated once.
+    if (created.length) {
+      const code = sku ?? generateSku(r.name!);
+      for (const t of created) t.sku = code;
+    }
+  }
+
+  for (const { row: r, location, quantity, target: t, create } of steps) {
+    changes.push({
+      row: r.row, sku: t.sku, name: create ? t.name : (r.name ?? t.name), location,
+      action: create ? "create" : "update", before: t.quantity, delta: quantity, after: t.quantity + quantity,
+    });
   }
 
   if (errors.length || opts.dryRun) return { changes, errors };
 
   const note = `Upload · ${opts.filename}`;
-  for (const r of rows) {
-    r.category = await ensureCategory(client, source, r.category, opts.userId);
-    const { found, sku } = plan.get(r.row)!;
-    if (!found) {
+  const categories = new Map<TemplateRow, string | null>();
+  for (const { row: r, location, quantity, target: t, create } of steps) {
+    if (!categories.has(r)) categories.set(r, await ensureCategory(client, source, r.category, opts.userId));
+    const category = categories.get(r)!;
+    if (create) {
       const { rows: made } = await client.query<{ id: string }>(
-        `INSERT INTO items (source, sku, name, category, subcategory, spec, dimensions, unit, opening_qty, quantity,
+        `INSERT INTO items (source, location, sku, name, category, subcategory, spec, dimensions, unit, opening_qty, quantity,
                             reorder_level, reorder_quantity, description, created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$9,$10,$11,$12,$13,$13) RETURNING id`,
-        [source, sku, r.name, r.category, r.subcategory, r.spec, r.dimensions, r.unit ?? "Unit", r.quantity,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$14) RETURNING id`,
+        [source, location, t.sku, r.name, category, r.subcategory, r.spec, r.dimensions, r.unit ?? "Unit", quantity,
          r.reorderLevel ?? 0, r.reorderQuantity ?? 0, r.notes, opts.userId],
       );
       await recordMovement(client, {
-        itemId: made[0].id, source, kind: "OPENING", delta: r.quantity, balance: r.quantity, note, userId: opts.userId,
+        itemId: made[0].id, source, kind: "OPENING", delta: quantity, balance: quantity, note, userId: opts.userId,
       });
       continue;
     }
 
-    const after = found.quantity + r.quantity;
+    const after = t.quantity + quantity;
     await client.query(
       `UPDATE items SET
          name = COALESCE($1, name),
@@ -212,18 +288,18 @@ export async function applyImport(
          updated_by = $11,
          updated_at = now()
        WHERE id = $12`,
-      [r.name, r.category, r.subcategory, r.spec, r.dimensions, r.unit, r.reorderLevel, r.reorderQuantity,
-       r.notes, after, opts.userId, found.id],
+      [r.name, category, r.subcategory, r.spec, r.dimensions, r.unit, r.reorderLevel, r.reorderQuantity,
+       r.notes, after, opts.userId, t.id],
     );
-    if (r.quantity > 0) {
+    if (quantity > 0) {
       const { rows: add } = await client.query<{ ref: string }>(
         `INSERT INTO stock_additions (item_id, source, quantity, supplier_ref, document_ref, notes,
                                       recorded_by, recorded_by_name, recorded_by_email)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING ref`,
-        [found.id, source, r.quantity, r.supplierRef, r.documentRef, note, opts.userId, opts.userName, opts.userEmail],
+        [t.id, source, quantity, r.supplierRef, r.documentRef, note, opts.userId, opts.userName, opts.userEmail],
       );
       await recordMovement(client, {
-        itemId: found.id, source, kind: "ADDITION", delta: r.quantity, balance: after, note: `${add[0].ref} · ${note}`, userId: opts.userId,
+        itemId: t.id!, source, kind: "ADDITION", delta: quantity, balance: after, note: `${add[0].ref} · ${note}`, userId: opts.userId,
       });
     }
   }
@@ -268,7 +344,7 @@ export function parseItemBody(body: Record<string, unknown>, opts: { creating: b
   const name = str("name");
   if (opts.creating || sku !== null) {
     if (!sku) throw new HttpError(400, "Material Code is required.");
-    if (sku.length > 48) throw new HttpError(400, "Material Code must be 48 characters or fewer.");
+    if (sku.length > 100) throw new HttpError(400, "Material Code must be 100 characters or fewer.");
   }
   if ((opts.creating || name !== null) && !name) throw new HttpError(400, "Material Name is required.");
 
@@ -299,7 +375,7 @@ export async function importStock(
   buffer: Buffer,
   opts: Uploader & { commit: boolean },
 ): Promise<{ applied: boolean; changes: ImportChange[]; errors: TemplateError[] }> {
-  const parsed = parseTemplate(buffer);
+  const parsed = parseTemplate(buffer, source);
   if (parsed.fatal) return { applied: false, changes: [], errors: parsed.errors };
 
   // Well-formed rows are still checked when other rows are malformed, so the

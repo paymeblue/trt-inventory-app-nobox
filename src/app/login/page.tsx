@@ -9,7 +9,7 @@ export const metadata: Metadata = { title: "Sign in" };
 const HIGHLIGHTS = [
   {
     title: "Everything in one view",
-    body: "Every board, tape, fitting and fabric in the Factory and at Nobox, with photos and specs, labelled by where it sits.",
+    body: "Every board, tape, fitting and fabric in the Factory, Nobox, Ready Cabinets and Germana, with photos and specs, labelled by where it sits.",
   },
   {
     title: "Always current",
@@ -70,7 +70,7 @@ export default function LoginPage() {
 
         <div className="relative flex h-full flex-col justify-center px-12 xl:px-20">
           <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-accent">
-            Factory · Nobox
+            Factory · Nobox · Ready Cabinets · Germana
           </p>
           <h2 className="max-w-lg text-[32px] leading-[1.15] tracking-tight xl:text-[38px]">
             Know what is in stock before you design with it.

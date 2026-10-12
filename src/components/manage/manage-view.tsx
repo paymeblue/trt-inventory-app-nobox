@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Ban, Boxes, ClipboardList, Download, History, PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal,
+  Ban, Boxes, ClipboardList, Download, FileDown, History, PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal,
   Tags, Trash2, TriangleAlert, Truck, Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -15,16 +16,17 @@ import { Pagination } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { StatCard } from "@/components/stat-card";
-import { LiveIndicator } from "@/components/status";
+import { LiveIndicator, LocationBadge, SOURCE_TONES } from "@/components/status";
 import { ItemFilters, useFilters } from "@/components/items/filters";
 import { useItems, type Item } from "@/components/items/use-items";
 import { ReorderBadge } from "@/components/forms/form-parts";
 import { StockAdditionForm, StockAdjustmentForm, StockIssueForm } from "@/components/forms/stock-forms";
 import { ItemForm } from "./item-form";
 import { CategoriesModal } from "./categories-modal";
-import { TEMPLATE_URL, UploadModal } from "./upload-modal";
+import { ItemPhoto } from "./item-photo";
+import { templateUrl, UploadModal } from "./upload-modal";
 import { apiFetch } from "@/lib/client";
-import { SOURCE_LABELS, type Source } from "@/lib/rbac";
+import { hasLocations, SOURCE_LABELS, SOURCE_PATHS, type Source } from "@/lib/rbac";
 import { cn, qty, relativeTime } from "@/lib/utils";
 
 const PAGE_SIZE = 50;
@@ -56,6 +58,8 @@ type Form =
  */
 export function ManageView({ source }: { source: Source }) {
   const toast = useToast();
+  const router = useRouter();
+  const search = useSearchParams();
   const label = SOURCE_LABELS[source];
   const [page, setPage] = React.useState(1);
   const { filters, setFilters, params, active } = useFilters();
@@ -65,13 +69,22 @@ export function ManageView({ source }: { source: Source }) {
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<Item | null>(null);
   const [deleting, setDeleting] = React.useState<Item | null>(null);
-  const [uploading, setUploading] = React.useState(false);
+  // The sidebar's "Import from Excel" lands here with ?import=1.
+  const [uploading, setUploading] = React.useState(search.get("import") === "1");
   const [managingCategories, setManagingCategories] = React.useState(false);
   const [dashboard, setDashboard] = React.useState<Dashboard | null>(null);
   const [waiting, setWaiting] = React.useState<number | null>(null);
   const [activity, setActivity] = React.useState<Activity[] | null>(null);
 
-  React.useEffect(() => setPage(1), [params.q, params.category, params.status]);
+  React.useEffect(() => setPage(1), [params.q, params.category, params.status, params.location]);
+  React.useEffect(() => {
+    if (search.get("import") === "1") setUploading(true);
+  }, [search]);
+
+  function closeUpload() {
+    setUploading(false);
+    if (search.get("import")) router.replace(SOURCE_PATHS[source]);
+  }
 
   // Follow the list's refresh cadence so the figures never lag the table.
   React.useEffect(() => {
@@ -110,6 +123,7 @@ export function ManageView({ source }: { source: Source }) {
           <>
             <LiveIndicator syncedAt={liveAt} error={error} />
             <Button onClick={() => setForm({ kind: "issue" })}><Truck className="h-4 w-4" /> Stock Issue</Button>
+            <Button variant="secondary" onClick={() => setUploading(true)}><Upload className="h-4 w-4" /> Import from Excel</Button>
             <Button variant="secondary" onClick={() => setForm({ kind: "addition" })}><PackagePlus className="h-4 w-4" /> Stock Addition</Button>
             <Button variant="secondary" onClick={() => setForm({ kind: "adjustment" })}><SlidersHorizontal className="h-4 w-4" /> Stock Adjustment</Button>
           </>
@@ -118,13 +132,13 @@ export function ManageView({ source }: { source: Source }) {
 
       {/* The workbook's Dashboard sheet. */}
       <div className="mb-3 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
-        <StatCard label="Total Materials" value={d ? d.total_materials.toLocaleString() : "—"} icon={Boxes} tone={source === "FACTORY" ? "accent" : "info"} />
+        <StatCard label="Total Materials" value={d ? d.total_materials.toLocaleString() : "—"} icon={Boxes} tone={SOURCE_TONES[source]} />
         <StatCard label="Opening Qty" value={d ? qty(d.opening_qty) : "—"} icon={History} />
         <StatCard label="Available Qty" value={d ? qty(d.available_qty) : "—"} icon={PackagePlus} tone="ok" />
         <Link href="/reservations" className="block">
           <StatCard label="Reserved Qty" value={d ? qty(d.reserved_qty) : "—"} sub={waiting !== null ? `${waiting} reservations to issue` : undefined} icon={ClipboardList} tone={waiting ? "warn" : "neutral"} />
         </Link>
-        <Link href="/logs" className="block">
+        <Link href="/issuance" className="block">
           <StatCard label="Issued Qty" value={d ? qty(d.issued_qty) : "—"} icon={PackageMinus} />
         </Link>
         <button className="text-left" onClick={() => setFilters({ ...filters, status: "attention" })}>
@@ -138,13 +152,16 @@ export function ManageView({ source }: { source: Source }) {
             <h2 className="text-sm font-semibold">Inventory_Master</h2>
             <div className="flex flex-wrap gap-1">
               <Button size="sm" variant="ghost" onClick={() => setCreating(true)}><Plus className="h-3.5 w-3.5" /> Material</Button>
-              <Button size="sm" variant="ghost" onClick={() => setUploading(true)}><Upload className="h-3.5 w-3.5" /> Upload Excel</Button>
-              <a href={TEMPLATE_URL} className={buttonClass("ghost", "sm")}><Download className="h-3.5 w-3.5" /> Template</a>
+              <a href={templateUrl(source)} className={buttonClass("ghost", "sm")} title={`Blank ${label} upload template`}><Download className="h-3.5 w-3.5" /> Template</a>
+              <a href={templateUrl(source, true)} className={buttonClass("ghost", "sm")} title={`Every ${label} material in the upload template, ready to edit and upload again`}><FileDown className="h-3.5 w-3.5" /> Export</a>
               <Button size="sm" variant="ghost" onClick={() => setManagingCategories(true)}><Tags className="h-3.5 w-3.5" /> Categories</Button>
             </div>
           </div>
           <div className="border-b border-border p-3 sm:p-4">
-            <ItemFilters filters={filters} onChange={setFilters} categories={data?.categories ?? []} active={active} />
+            <ItemFilters
+              filters={filters} onChange={setFilters} categories={data?.categories ?? []} active={active}
+              locations={hasLocations(source)} manage
+            />
           </div>
 
           {loading && !data ? (
@@ -153,7 +170,7 @@ export function ManageView({ source }: { source: Source }) {
             <EmptyState
               icon={Boxes}
               title={active ? "Nothing matches those filters" : `No ${label} materials yet`}
-              description={active ? "Try a broader search or clear the filters." : "Add materials one at a time, or upload the Excel template."}
+              description={active ? "Try a broader search or clear the filters." : "Upload the Excel template with Import from Excel, or add materials one at a time."}
             />
           ) : (
             <TableWrap className={cn(loading && "opacity-60")}>
@@ -176,11 +193,19 @@ export function ManageView({ source }: { source: Source }) {
                 {items.map((item) => (
                   <Tr key={item.id} className={cn(changed.has(item.id) && "animate-flash")}>
                     <Td>
-                      <span className="code block text-[12.5px] font-semibold">{item.sku}</span>
-                      <span className="block max-w-[280px] truncate text-[12.5px]">{item.name}</span>
-                      <span className="block max-w-[280px] truncate text-[11px] text-fg-subtle">
-                        {[item.subcategory ?? item.category, item.spec, item.dimensions].filter(Boolean).join(" · ")}
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <ItemPhoto item={item} onChanged={refresh} />
+                        <span className="min-w-0">
+                          <span className="flex items-center gap-1.5">
+                            <span className="code block text-[12.5px] font-semibold">{item.sku}</span>
+                            <LocationBadge location={item.location} />
+                          </span>
+                          <span className="block max-w-[280px] truncate text-[12.5px]">{item.name}</span>
+                          <span className="block max-w-[280px] truncate text-[11px] text-fg-subtle">
+                            {[item.subcategory ?? item.category, item.spec, item.dimensions].filter(Boolean).join(" · ")}
+                          </span>
+                        </span>
+                      </div>
                     </Td>
                     <Td className="hidden text-[12.5px] text-fg-muted lg:table-cell">{item.unit}</Td>
                     <Td align="right" className="tabular hidden text-[12.5px] text-fg-muted xl:table-cell">{qty(item.opening_qty)}</Td>
@@ -236,7 +261,11 @@ export function ManageView({ source }: { source: Source }) {
           </Card>
 
           <Card>
-            <CardHeader title="Recent changes" description={`Last 25 changes to ${label} stock`} />
+            <CardHeader
+              title="Recent changes"
+              description={`Last 25 changes to ${label} stock`}
+              action={<Link href="/logs" className="text-[12.5px] font-medium text-accent hover:underline">Stock logs</Link>}
+            />
             {!activity ? (
               <div className="space-y-2 p-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton h-9 rounded-lg" />)}</div>
             ) : !activity.length ? (
@@ -276,7 +305,7 @@ export function ManageView({ source }: { source: Source }) {
           onSaved={() => { setCreating(false); setEditing(null); refresh(); }}
         />
       ) : null}
-      {uploading ? <UploadModal source={source} onClose={() => setUploading(false)} onApplied={() => { setUploading(false); refresh(); }} /> : null}
+      {uploading ? <UploadModal source={source} onClose={closeUpload} onApplied={() => { closeUpload(); refresh(); }} /> : null}
       {managingCategories ? <CategoriesModal source={source} onClose={() => setManagingCategories(false)} onChanged={refresh} /> : null}
 
       {deleting ? (

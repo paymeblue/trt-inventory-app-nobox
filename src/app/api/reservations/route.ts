@@ -1,5 +1,5 @@
 import { query, transaction } from "@/lib/db";
-import { personOf, requireSession } from "@/lib/session";
+import { personOf, requireReserver, requireSession } from "@/lib/session";
 import { handle, ok, readJson } from "@/lib/api";
 import { isSource } from "@/lib/rbac";
 import { createReservation, RESERVATION_COLUMNS, RESERVATION_FROM } from "@/lib/reservations";
@@ -57,7 +57,7 @@ export const GET = handle(async (req: Request) => {
 });
 
 export const POST = handle(async (req: Request) => {
-  const session = await requireSession();
+  const session = await requireReserver();
   const body = await readJson<{ itemId?: string; quantity?: number; project?: string; notes?: string }>(req);
   const created = await transaction((client) =>
     createReservation(

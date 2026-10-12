@@ -1,5 +1,5 @@
 import { transaction } from "@/lib/db";
-import { personOf, requireSession } from "@/lib/session";
+import { personOf, requireReserver } from "@/lib/session";
 import { fail, handle, ok } from "@/lib/api";
 import { importReservations } from "@/lib/reservation-template";
 
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** Form fields: file, commit ("1" to reserve). Without commit it only checks. */
 export const POST = handle(async (req: Request) => {
-  const session = await requireSession();
+  const session = await requireReserver();
   const form = await req.formData();
   const file = form.get("file");
   if (!(file instanceof File)) return fail(400, "No spreadsheet was uploaded.");

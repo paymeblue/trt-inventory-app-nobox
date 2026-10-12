@@ -2,11 +2,13 @@
 
 import * as React from "react";
 import { apiFetch, toQuery } from "@/lib/client";
-import type { Source } from "@/lib/rbac";
+import type { Location, Source } from "@/lib/rbac";
 
 export type Item = {
   id: string;
   source: Source;
+  /** Lagos or Abuja for Nobox materials; null on the other sides. */
+  location: Location | null;
   sku: string;
   name: string;
   category: string | null;
@@ -43,7 +45,7 @@ export type ItemsResponse = {
   items: Item[];
   total: number;
   categories: string[];
-  counts: { factory: number; nobox: number; low: number; reorder: number; out: number; reserved: number };
+  counts: { bySource: Record<Source, number>; low: number; reorder: number; out: number; reserved: number };
   page: number;
   pageSize: number;
 };

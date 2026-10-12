@@ -8,7 +8,7 @@ import { ImageUpload } from "@/components/image-upload";
 import { useToast } from "@/components/ui/toast";
 import type { Item } from "@/components/items/use-items";
 import { apiFetch } from "@/lib/client";
-import { SOURCE_LABELS, type Source } from "@/lib/rbac";
+import { hasLocations, LOCATION_LABELS, LOCATIONS, SOURCE_LABELS, type Source } from "@/lib/rbac";
 import { slugToSku } from "@/lib/utils";
 
 const UNITS = ["Sheet", "Pcs", "Unit", "Slab", "m", "kg", "litre", "roll", "pack", "set"];
@@ -40,6 +40,7 @@ export function ItemForm({
     reorderQuantity: item ? String(item.reorder_quantity) : "",
     description: item?.description ?? "",
     quantity: "0",
+    location: item?.location ?? "LAGOS",
   });
   const NEW = "__new";
   const [newCategory, setNewCategory] = React.useState("");
@@ -80,7 +81,7 @@ export function ItemForm({
       } else {
         await apiFetch("/api/items", {
           method: "POST",
-          body: JSON.stringify({ ...payload, source, quantity: form.quantity || 0 }),
+          body: JSON.stringify({ ...payload, source, quantity: form.quantity || 0, location: hasLocations(source) ? form.location : null }),
         });
         toast(`${form.name} added to ${SOURCE_LABELS[source]}.`);
       }
@@ -97,7 +98,7 @@ export function ItemForm({
       open
       onClose={onClose}
       size="lg"
-      title={editing ? `Edit ${item!.sku}` : `New ${SOURCE_LABELS[source]} material`}
+      title={editing ? `Edit ${item!.sku}${item!.location ? ` (${LOCATION_LABELS[item!.location]})` : ""}` : `New ${SOURCE_LABELS[source]} material`}
       description={editing ? "Change the details. Quantities change only through Stock Addition, Issue and Adjustment." : undefined}
       footer={
         <>
@@ -152,6 +153,13 @@ export function ItemForm({
         </div>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {hasLocations(source) && !editing ? (
+            <Field label="Location" hint="the store holding it" className="sm:col-span-2">
+              <Select value={form.location} onChange={set("location")}>
+                {LOCATIONS.map((l) => <option key={l} value={l}>{LOCATION_LABELS[l]}</option>)}
+              </Select>
+            </Field>
+          ) : null}
           <Field label="Category">
             <Select value={form.category} onChange={set("category")}>
               <option value="">No category</option>

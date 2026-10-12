@@ -266,7 +266,7 @@ export function UsersView() {
               placeholder="CEO"
             />
             <datalist id="job-titles">
-              {["CEO", "COO", "CFO", "Head of Design", "Designer", "Factory Manager", "Nobox Manager", "Storekeeper", "Inventory Officer", "Procurement"].map((t) => (
+              {["CEO", "COO", "CFO", "Head of Design", "Designer", "Factory Manager", "Nobox Manager", "Ready Cabinets Manager", "Germana Manager", "Storekeeper", "Inventory Officer", "Procurement"].map((t) => (
                 <option key={t} value={t} />
               ))}
             </datalist>

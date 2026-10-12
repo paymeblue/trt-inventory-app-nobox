@@ -6,12 +6,12 @@ import { Modal } from "@/components/ui/modal";
 import { Button, buttonClass } from "@/components/ui/button";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
-import { SourceBadge } from "@/components/status";
+import { LocationBadge, SourceBadge } from "@/components/status";
 import { apiFetch } from "@/lib/client";
-import type { Source } from "@/lib/rbac";
+import { SOURCE_LIST, type Location, type Source } from "@/lib/rbac";
 import { cn, plural, qty } from "@/lib/utils";
 
-type Line = { row: number; sku: string; source: Source; name: string; unit: string; quantity: number; project: string; available: number };
+type Line = { row: number; sku: string; source: Source; location: Location | null; name: string; unit: string; quantity: number; project: string; available: number };
 type Problem = { row: number | null; column: string | null; message: string };
 type Result = { filename: string; applied: boolean; preview: Line[]; errors: Problem[] };
 
@@ -73,7 +73,7 @@ export function ReserveUploadModal({ onClose, onApplied }: { onClose: () => void
       onClose={onClose}
       size="xl"
       title="Reserve from Excel"
-      description="One row per material: Material_Code, From (Factory or Nobox), Quantity_Requested, Project_Name, Purpose_Notes."
+      description={`One row per material: Material_Code, From (${SOURCE_LIST}), Quantity_Requested, Project_Name, Purpose_Notes.`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
@@ -162,6 +162,7 @@ export function ReserveUploadModal({ onClose, onApplied }: { onClose: () => void
                       <span className="flex items-center gap-2">
                         <span className="truncate text-[13px] font-medium">{l.name}</span>
                         <SourceBadge source={l.source} />
+                        <LocationBadge location={l.location} />
                       </span>
                       <span className="code text-[11.5px] text-fg-subtle">{l.sku}</span>
                     </Td>

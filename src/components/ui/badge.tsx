@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-type Tone = "neutral" | "ok" | "warn" | "danger" | "info" | "accent";
+export type Tone = "neutral" | "ok" | "warn" | "danger" | "info" | "accent" | "violet" | "teal";
 
 const TONES: Record<Tone, string> = {
   neutral: "bg-surface-2 text-fg-muted border-border",
@@ -10,6 +10,8 @@ const TONES: Record<Tone, string> = {
   danger: "bg-danger-soft text-danger border-transparent",
   info: "bg-info-soft text-info border-transparent",
   accent: "bg-accent-soft text-accent border-transparent",
+  violet: "bg-violet-soft text-violet border-transparent",
+  teal: "bg-teal-soft text-teal border-transparent",
 };
 
 export function Badge({

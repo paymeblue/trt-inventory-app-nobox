@@ -29,6 +29,11 @@
   --danger-soft:   #fdeaec;
   --info:          #2b5fd9;
   --info-soft:     #e9effd;
+  /* Ready Cabinets and Germana badges; kept apart from the status colours. */
+  --violet:        #6d3fd1;
+  --violet-soft:   #f1ebfd;
+  --teal:          #0b7a82;
+  --teal-soft:     #e2f5f6;
 
   --ring:          #b4530933;
   --shadow:        0 1px 2px rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.12);
@@ -59,6 +64,10 @@
   --danger-soft:   #2a1114;
   --info:          #7ba2ff;
   --info-soft:     #101728;
+  --violet:        #b196ff;
+  --violet-soft:   #1a1330;
+  --teal:          #4fd1d9;
+  --teal-soft:     #0b1f21;
 
   --ring:          #f0a52a40;
   --shadow:        0 1px 2px rgb(0 0 0 / 0.5), 0 12px 32px -16px rgb(0 0 0 / 0.9);
@@ -87,6 +96,10 @@
   --color-danger-soft: var(--danger-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-violet: var(--violet);
+  --color-violet-soft: var(--violet-soft);
+  --color-teal: var(--teal);
+  --color-teal-soft: var(--teal-soft);
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: var(--font-mono-jb), ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;

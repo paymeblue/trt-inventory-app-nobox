@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { SESSION_COOKIE, verifySession, type SessionPayload } from "./auth";
-import { canManage, canManageUsers, type Source } from "./rbac";
+import { canManage, canManageUsers, canReserve, type Source } from "./rbac";
 
 /** Reads and verifies the JWT session cookie. Memoised per request. */
 export const getSession = cache(async (): Promise<SessionPayload | null> => {
@@ -21,6 +21,14 @@ export async function requireManager(source: Source): Promise<SessionPayload> {
   const session = await requireSession();
   if (!canManage(session.role, source)) {
     throw new HttpError(403, "Your role cannot change this inventory");
+  }
+  return session;
+}
+
+export async function requireReserver(): Promise<SessionPayload> {
+  const session = await requireSession();
+  if (!canReserve(session.role)) {
+    throw new HttpError(403, "Only designers reserve stock. The inventory teams issue reservations.");
   }
   return session;
 }

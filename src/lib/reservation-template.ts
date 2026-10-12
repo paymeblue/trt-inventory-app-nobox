@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { PoolClient } from "pg";
-import { SOURCE_LABELS, type Source } from "./rbac";
+import { hasLocations, LOCATION_LABELS, LOCATIONS, SOURCE_LABELS, SOURCE_LIST, SOURCES, type Location, type Source } from "./rbac";
 import { createReservation, type Person } from "./reservations";
 import { RESERVED_SQL } from "./items";
 import { MAX_ROWS, number, text, type TemplateError } from "./template";
@@ -10,8 +10,10 @@ import { MAX_ROWS, number, text, type TemplateError } from "./template";
  * Designer Name and Email come from the signed-in account.
  */
 export const RESERVATION_COLUMNS_TEMPLATE = [
-  { header: "Material_Code", width: 16, rule: "Required. The material's code, as shown in the inventory (e.g. FINSA 116)." },
-  { header: "From", width: 10, rule: "Required. Factory or Nobox." },
+  { header: "Material_Code", width: 16, rule: "Required. The material's code, as shown in the inventory (e.g. SV13)." },
+  { header: "Material_Name", width: 30, rule: "Optional. Needed only when several materials share the code (e.g. YXJ-0042 MATT GOLD and YXJ-0042 ROSE GOLD)." },
+  { header: "From", width: 10, rule: `Required. ${SOURCE_LIST}.` },
+  { header: "Location", width: 10, rule: "Nobox only: Lagos or Abuja. May be left blank when the material is held in just one of them." },
   { header: "Quantity_Requested", width: 18, rule: "Required. More than 0 and no more than the Available Qty." },
   { header: "Project_Name", width: 30, rule: "Required. The project or client this is for." },
   { header: "Purpose_Notes", width: 40, rule: "Optional. e.g. EXHIBITION, CLOSETS, TV UNIT." },
@@ -37,17 +39,19 @@ export function buildReservationTemplate(): Buffer {
     [],
     ["Example"],
     RESERVATION_COLUMNS_TEMPLATE.map((c) => c.header),
-    ["FINSA 116", "Factory", 6, "DAGGASH", "CLOSETS"],
+    ["SV13", "PANT RACK", "Nobox", "Lagos", 2, "DAGGASH", "CLOSETS"],
   ]);
   guide["!cols"] = [{ wch: 16 }, { wch: 90 }];
   XLSX.utils.book_append_sheet(book, guide, "Instructions");
   return XLSX.write(book, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
-type Row = { row: number; sku: string; source: Source; quantity: number; project: string; notes: string | null };
+type Row = {
+  row: number; sku: string; name: string | null; source: Source; location: Location | null; quantity: number; project: string; notes: string | null;
+};
 
 export type ReservationPreview = {
-  row: number; sku: string; source: Source; name: string; unit: string; quantity: number; project: string; available: number;
+  row: number; sku: string; source: Source; location: Location | null; name: string; unit: string; quantity: number; project: string; available: number;
 };
 
 function parse(buffer: Buffer): { rows: Row[]; errors: TemplateError[]; fatal: boolean } {
@@ -85,16 +89,25 @@ function parse(buffer: Buffer): { rows: Row[]; errors: TemplateError[]; fatal: b
 
     const sku = text(cells[0]).toUpperCase();
     if (!sku) fail("Material_Code", "Missing required fields: Material_Code.");
-    const from = text(cells[1]).toLowerCase();
-    const source: Source | null = from === "factory" ? "FACTORY" : from === "nobox" ? "NOBOX" : null;
-    if (!source) fail("From", `"${text(cells[1])}" must be Factory or Nobox.`);
-    const quantity = number(cells[2]);
-    if (quantity === null || quantity <= 0) fail("Quantity_Requested", `"${text(cells[2])}" must be a number greater than zero.`);
-    const project = text(cells[3]);
+    // "Ready Cabinets", "ReadyCabinets" and "ready_cabinets" all mean the same side.
+    const letters = (v: string) => v.toLowerCase().replace(/[^a-z]/g, "");
+    const from = letters(text(cells[2]));
+    const source: Source | null = SOURCES.find((s) => letters(SOURCE_LABELS[s]) === from) ?? null;
+    if (!source) fail("From", `"${text(cells[2])}" must be ${SOURCE_LIST}.`);
+    const place = letters(text(cells[3]));
+    const location = LOCATIONS.find((l) => letters(LOCATION_LABELS[l]) === place) ?? null;
+    if (place && (!location || (source && !hasLocations(source)))) {
+      fail("Location", source && !hasLocations(source) ? `Leave Location blank for ${SOURCE_LABELS[source]}.` : `"${text(cells[3])}" must be Lagos or Abuja.`);
+    }
+    const quantity = number(cells[4]);
+    if (quantity === null || quantity <= 0) fail("Quantity_Requested", `"${text(cells[4])}" must be a number greater than zero.`);
+    const project = text(cells[5]);
     if (!project) fail("Project_Name", "Missing required fields: Project_Name.");
 
     if (errors.length > before) continue;
-    rows.push({ row: rowNo, sku, source: source!, quantity: quantity!, project, notes: text(cells[4]) || null });
+    rows.push({
+      row: rowNo, sku, name: text(cells[1]) || null, source: source!, location, quantity: quantity!, project, notes: text(cells[6]) || null,
+    });
   }
   if (!dataRows) return fatal(`The "${name}" sheet has headers but no rows.`);
   return { rows, errors, fatal: false };
@@ -118,17 +131,34 @@ export async function importReservations(
   const ids = new Map<number, string>();
 
   for (const r of parsed.rows) {
-    const { rows } = await client.query<{ id: string; sku: string; name: string; unit: string; in_stock: number; reserved: number; available: number }>(
-      `SELECT i.id, i.sku, i.name, i.unit, i.quantity::float8 AS in_stock, (${RESERVED_SQL})::float8 AS reserved,
+    const { rows } = await client.query<{
+      id: string; sku: string; name: string; location: Location | null; dimensions: string | null; unit: string;
+      in_stock: number; reserved: number; available: number;
+    }>(
+      `SELECT i.id, i.sku, i.name, i.location, i.dimensions, i.unit, i.quantity::float8 AS in_stock, (${RESERVED_SQL})::float8 AS reserved,
               (i.quantity - ${RESERVED_SQL})::float8 AS available
-         FROM items i WHERE i.source = $1 AND lower(i.sku) = lower($2)`,
-      [r.source, r.sku],
+         FROM items i
+        WHERE i.source = $1 AND lower(i.sku) = lower($2)
+          AND ($3::text IS NULL OR i.location = $3) AND ($4::text IS NULL OR lower(i.name) = lower($4))
+        ORDER BY i.location, i.name`,
+      [r.source, r.sku, r.location, r.name],
     );
-    const item = rows[0];
-    if (!item) {
-      errors.push({ row: r.row, column: "Material_Code", message: `No ${SOURCE_LABELS[r.source]} material with code ${r.sku}.` });
+    const where = `${SOURCE_LABELS[r.source]}${r.location ? ` ${LOCATION_LABELS[r.location]}` : ""}`;
+    if (!rows.length) {
+      errors.push({ row: r.row, column: "Material_Code", message: `No ${where} material with code ${r.sku}${r.name ? ` called ${r.name}` : ""}.` });
       continue;
     }
+    if (rows.length > 1) {
+      const list = rows.map((x) => [x.name, x.dimensions, x.location && LOCATION_LABELS[x.location]].filter(Boolean).join(" · ")).join("; ");
+      const places = new Set(rows.map((x) => x.location)).size > 1;
+      errors.push({
+        row: r.row,
+        column: places && !r.location ? "Location" : "Material_Name",
+        message: `${rows.length} ${where} materials have code ${r.sku} (${list}). ${places && !r.location ? "Say Lagos or Abuja in Location" : "Give the Material_Name"} to pick one.`,
+      });
+      continue;
+    }
+    const item = rows[0];
     const left = item.available - (claimed.get(item.id) ?? 0);
     if (r.quantity > left) {
       errors.push({
@@ -146,7 +176,10 @@ export async function importReservations(
     }
     claimed.set(item.id, (claimed.get(item.id) ?? 0) + r.quantity);
     ids.set(r.row, item.id);
-    preview.push({ row: r.row, sku: r.sku, source: r.source, name: item.name, unit: item.unit, quantity: r.quantity, project: r.project, available: item.available });
+    preview.push({
+      row: r.row, sku: r.sku, source: r.source, location: item.location, name: item.name, unit: item.unit, quantity: r.quantity,
+      project: r.project, available: item.available,
+    });
   }
 
   errors.sort((a, b) => (a.row ?? 0) - (b.row ?? 0));

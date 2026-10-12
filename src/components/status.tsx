@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Factory, Store } from "lucide-react";
-import { Badge } from "./ui/badge";
-import { SOURCE_LABELS, type Source } from "@/lib/rbac";
+import { Archive, Factory, MapPin, Store, Warehouse } from "lucide-react";
+import { Badge, type Tone } from "./ui/badge";
+import { LOCATION_LABELS, SOURCE_LABELS, type Location, type Source } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 export function StockStatus({ onHand, reorder }: { onHand: number; reorder: number }) {
@@ -12,15 +12,30 @@ export function StockStatus({ onHand, reorder }: { onHand: number; reorder: numb
   return <Badge tone="ok" dot>in stock</Badge>;
 }
 
-const SOURCE_ICONS = { FACTORY: Factory, NOBOX: Store } as const;
+export const SOURCE_ICONS: Record<Source, React.ComponentType<{ className?: string }>> = {
+  FACTORY: Factory, NOBOX: Store, READY_CABINETS: Archive, GERMANA: Warehouse,
+};
 
-/** Factory items read amber, Nobox items read blue, everywhere in the app. */
+export const SOURCE_TONES: Record<Source, Tone & ("accent" | "info" | "violet" | "teal")> = { FACTORY: "accent", NOBOX: "info", READY_CABINETS: "violet", GERMANA: "teal" };
+
+/** Each side keeps one colour everywhere in the app: Factory amber, Nobox blue, Ready Cabinets violet, Germana teal. */
 export function SourceBadge({ source, className }: { source: Source; className?: string }) {
   const Icon = SOURCE_ICONS[source];
   return (
-    <Badge tone={source === "FACTORY" ? "accent" : "info"} className={className}>
+    <Badge tone={SOURCE_TONES[source]} className={className}>
       <Icon className="h-3 w-3" />
       {SOURCE_LABELS[source]}
+    </Badge>
+  );
+}
+
+/** The Nobox store (Lagos or Abuja) a material is held in; nothing for the other sides. */
+export function LocationBadge({ location, className }: { location: Location | null | undefined; className?: string }) {
+  if (!location) return null;
+  return (
+    <Badge tone="neutral" className={className}>
+      <MapPin className="h-3 w-3" />
+      {LOCATION_LABELS[location]}
     </Badge>
   );
 }

@@ -8,14 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { apiFetch } from "@/lib/client";
-import { SOURCE_LABELS, type Source } from "@/lib/rbac";
+import { hasLocations, LOCATION_LABELS, SOURCE_LABELS, type Location, type Source } from "@/lib/rbac";
 import { cn, plural, qty } from "@/lib/utils";
 
-type Change = { row: number; sku: string; name: string; action: "create" | "update"; before: number; delta: number; after: number };
+type Change = {
+  row: number; sku: string; name: string; location: Location | null; action: "create" | "update"; before: number; delta: number; after: number;
+};
 type Problem = { row: number | null; column: string | null; message: string };
 type Result = { filename: string; applied: boolean; changes: Change[]; errors: Problem[] };
 
-export const TEMPLATE_URL = "/api/items/template";
+/** The side's upload template; `filled` lists its current materials in it. */
+export function templateUrl(source: Source, filled = false) {
+  return `/api/items/template?source=${source}${filled ? "&filled=1" : ""}`;
+}
 
 export function UploadModal({ source, onClose, onApplied }: { source: Source; onClose: () => void; onApplied: () => void }) {
   const toast = useToast();
@@ -56,7 +61,7 @@ export function UploadModal({ source, onClose, onApplied }: { source: Source; on
         setResult(done);
         return;
       }
-      toast(`${plural(done.changes.length, "row")} from ${done.filename} applied to ${SOURCE_LABELS[source]}.`);
+      toast(`${plural(done.changes.length, "change")} from ${done.filename} applied to ${SOURCE_LABELS[source]}.`);
       onApplied();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Upload failed", "error");
@@ -77,13 +82,13 @@ export function UploadModal({ source, onClose, onApplied }: { source: Source; on
       onClose={onClose}
       size="xl"
       title={`Upload to ${SOURCE_LABELS[source]}`}
-      description="Inventory_Master rows. A new material starts with Quantity_Added as its Opening_Qty; on an existing one it is posted as a Stock Addition. To remove stock, use the Stock Adjustment form."
+      description={`Inventory_Master rows. A new material starts with Quantity_Added as its Opening_Qty; on an existing one it is posted as a Stock Addition.${hasLocations(source) ? " Lagos and Abuja quantities go to their own store." : ""} To remove stock, use the Stock Adjustment form. Add photos afterwards from the photo square on each row.`}
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Cancel</Button>
           {ready ? (
             <Button onClick={apply} loading={busy}>
-              Apply {plural(result.changes.length, "row")}
+              Apply {plural(result.changes.length, "change")}
             </Button>
           ) : null}
         </>
@@ -111,14 +116,14 @@ export function UploadModal({ source, onClose, onApplied }: { source: Source; on
           <div>
             <p className="text-[14px] font-medium">{file ? file.name : "Drop the filled-in template here"}</p>
             <p className="mt-1 text-[12.5px] text-fg-muted">
-              Only the TRT Nobox template is accepted, with its columns unchanged.
+              Use the {SOURCE_LABELS[source]} template{hasLocations(source) ? ", with Lagos and Abuja quantities in their own columns" : ""}. Columns are matched by their header.
             </p>
           </div>
           <div className="flex flex-wrap justify-center gap-2">
             <Button variant="secondary" size="sm" onClick={() => inputRef.current?.click()} loading={busy && !result}>
               <Upload className="h-4 w-4" /> {file ? "Choose another file" : "Choose file"}
             </Button>
-            <a href={TEMPLATE_URL} className={buttonClass("ghost", "sm")}>
+            <a href={templateUrl(source)} className={buttonClass("ghost", "sm")}>
               <Download className="h-4 w-4" /> Download template
             </a>
           </div>
@@ -183,11 +188,12 @@ export function UploadModal({ source, onClose, onApplied }: { source: Source; on
               </thead>
               <tbody>
                 {result.changes.map((c) => (
-                  <Tr key={c.row}>
+                  <Tr key={`${c.row}-${c.location ?? ""}`}>
                     <Td className="tabular text-[13px] text-fg-subtle">{c.row}</Td>
                     <Td>
                       <span className="flex items-center gap-2">
                         <span className="truncate text-[13px] font-medium">{c.name}</span>
+                        {c.location ? <Badge>{LOCATION_LABELS[c.location]}</Badge> : null}
                         {c.action === "create" ? <Badge tone="info">new</Badge> : null}
                       </span>
                       <span className="code text-[11.5px] text-fg-subtle">{c.sku}</span>

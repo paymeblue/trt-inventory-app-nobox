@@ -1,7 +1,7 @@
 import { query, transaction } from "@/lib/db";
 import { getSession, requireManager } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
-import { isSource } from "@/lib/rbac";
+import { hasLocations, isLocation, isSource, SOURCE_LABELS, SOURCE_LIST, SOURCES, type Source } from "@/lib/rbac";
 import { AVAILABLE_SQL, ensureCategory, ITEM_COLUMNS, ITEM_FROM, parseItemBody, recordMovement, RESERVED_SQL, STATUS_SQL } from "@/lib/items";
 
 export const runtime = "nodejs";
@@ -13,11 +13,11 @@ const AVAILABLE = AVAILABLE_SQL;
 const STATUS_FILTER: Record<string, string> = { ok: "OK", low: "LOW", reorder: "REORDER NOW", out: "OUT OF STOCK" };
 
 const SORTS: Record<string, string> = {
-  code: "i.sku",
-  name: "lower(i.name) ASC, i.sku",
-  "qty-desc": `${AVAILABLE} DESC, lower(i.name)`,
-  "qty-asc": `${AVAILABLE} ASC, lower(i.name)`,
-  updated: "i.updated_at DESC",
+  code: "i.sku, lower(i.name), i.dimensions, i.location, i.id",
+  name: "lower(i.name) ASC, i.sku, i.dimensions, i.location, i.id",
+  "qty-desc": `${AVAILABLE} DESC, lower(i.name), i.id`,
+  "qty-asc": `${AVAILABLE} ASC, lower(i.name), i.id`,
+  updated: "i.updated_at DESC, i.id",
 };
 
 /** Public: anyone may browse the inventory without signing in. */
@@ -30,6 +30,7 @@ export const GET = handle(async (req: Request) => {
   const q = p.get("q")?.trim();
   const category = p.get("category")?.trim();
   const status = p.get("status");
+  const location = p.get("location");
   const sort = SORTS[p.get("sort") ?? "name"] ?? SORTS.name;
   const pageSize = Math.min(200, Math.max(1, Number(p.get("pageSize")) || 48));
   const page = Math.max(1, Number(p.get("page")) || 1);
@@ -59,12 +60,17 @@ export const GET = handle(async (req: Request) => {
     params.push(category);
     where.push(`i.category = $${params.length}`);
   }
+  if (isLocation(location)) {
+    params.push(location);
+    where.push(`i.location = $${params.length}`);
+  }
   if (status && STATUS_FILTER[status]) {
     params.push(STATUS_FILTER[status]);
     where.push(`(${STATUS_SQL}) = $${params.length}`);
   }
   if (status === "attention") where.push(`(${STATUS_SQL}) IN ('LOW','REORDER NOW','OUT OF STOCK')`);
   if (status === "reserved") where.push(`${RESERVED_SQL} > 0`);
+  if (status === "nophoto") where.push("i.image_id IS NULL");
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const scopeSql = scope.length ? `WHERE ${scope.join(" AND ")}` : "";
@@ -82,11 +88,10 @@ export const GET = handle(async (req: Request) => {
       `SELECT DISTINCT i.name AS category FROM categories i ${scopeSql} ORDER BY 1`,
       scopeParams,
     ),
-    // Factory and Nobox totals are always group-wide (they label the source
-    // tabs); low and out follow the source being viewed.
-    query<{ factory: number; nobox: number; low: number; reorder: number; out: number; reserved: number }>(
-      `SELECT COUNT(*) FILTER (WHERE i.source = 'FACTORY')::int AS factory,
-              COUNT(*) FILTER (WHERE i.source = 'NOBOX')::int AS nobox,
+    // Per-side totals are always group-wide (they label the side tabs); low
+    // and out follow the side being viewed.
+    query<Record<Source, number> & { low: number; reorder: number; out: number; reserved: number }>(
+      `SELECT ${SOURCES.map((s) => `COUNT(*) FILTER (WHERE i.source = '${s}')::int AS "${s}"`).join(", ")},
               COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND (${STATUS_SQL}) = 'LOW')::int AS low,
               COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND (${STATUS_SQL}) = 'REORDER NOW')::int AS reorder,
               COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND (${STATUS_SQL}) = 'OUT OF STOCK')::int AS out,
@@ -100,7 +105,10 @@ export const GET = handle(async (req: Request) => {
     items: session ? items : items.map((i) => ({ ...i, updated_by_name: null })),
     total: totals[0].n,
     categories: categories.map((c) => c.category),
-    counts: counts[0],
+    counts: {
+      bySource: Object.fromEntries(SOURCES.map((s) => [s, counts[0][s]])),
+      low: counts[0].low, reorder: counts[0].reorder, out: counts[0].out, reserved: counts[0].reserved,
+    },
     page,
     pageSize,
   });
@@ -108,11 +116,13 @@ export const GET = handle(async (req: Request) => {
 
 export const POST = handle(async (req: Request) => {
   const body = await readJson<Record<string, unknown>>(req);
-  if (!isSource(body.source)) return fail(400, "Choose Factory or Nobox.");
+  if (!isSource(body.source)) return fail(400, `Choose ${SOURCE_LIST}.`);
   const source = body.source;
   const session = await requireManager(source);
 
   const fields = parseItemBody(body, { creating: true });
+  const location = hasLocations(source) ? body.location : null;
+  if (hasLocations(source) && !isLocation(location)) return fail(400, `Choose whether this ${SOURCE_LABELS[source]} material is in Lagos or Abuja.`);
   const quantity = Number(body.quantity ?? 0);
   if (!Number.isFinite(quantity) || quantity < 0) return fail(400, "Opening quantity must be 0 or more.");
 
@@ -120,11 +130,11 @@ export const POST = handle(async (req: Request) => {
     const category = await ensureCategory(client, source, fields.category, session.sub);
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO items (source, sku, name, category, subcategory, spec, dimensions, colour, unit, opening_qty, quantity,
-                          reorder_level, reorder_quantity, description, image_id, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$15) RETURNING id`,
+                          reorder_level, reorder_quantity, description, image_id, created_by, updated_by, location)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$15,$16) RETURNING id`,
       [source, fields.sku, fields.name, category, fields.subcategory, fields.spec, fields.dimensions, fields.colour,
        fields.unit ?? "Unit", quantity, fields.reorderLevel ?? 0, fields.reorderQuantity ?? 0, fields.description,
-       fields.imageId, session.sub],
+       fields.imageId, session.sub, location],
     );
     await recordMovement(client, {
       itemId: rows[0].id, source, kind: "OPENING", delta: quantity, balance: quantity, note: "Opening_Qty", userId: session.sub,

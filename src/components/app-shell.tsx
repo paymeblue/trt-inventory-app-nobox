@@ -3,10 +3,15 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LogOut, Menu, X, ChevronDown, LayoutGrid, Factory, Store, Users, ClipboardList, LogIn, ScrollText, Bookmark } from "lucide-react";
+import {
+  LogOut, Menu, X, ChevronDown, LayoutGrid, Users, ClipboardList, LogIn, ScrollText, Bookmark, Truck, PackageCheck, FileSpreadsheet,
+} from "lucide-react";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme";
-import { canManage, canManageUsers, homeFor, ROLE_LABELS, type Role } from "@/lib/rbac";
+import {
+  canManage, canManageUsers, canReserve, homeFor, isManager, ROLE_LABELS, SOURCE_LABELS, SOURCE_MANAGERS, SOURCE_PATHS, SOURCES, type Role,
+} from "@/lib/rbac";
+import { SOURCE_ICONS } from "./status";
 import { SessionProvider, signInHref } from "./session-context";
 import { NotificationBell } from "./notification-bell";
 import { LiveAlerts } from "./live-alerts";
@@ -19,15 +24,23 @@ type NavItem = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   allowed: (role: Role | null) => boolean;
+  /** Opens a form rather than a page; left out of the phone's bottom bar. */
+  shortcut?: boolean;
 };
+
 
 const NAV: NavItem[] = [
   { href: "/inventory", label: "Inventory", icon: LayoutGrid, allowed: () => true },
-  { href: "/reserve", label: "Reservation Form", icon: Bookmark, allowed: (r) => r === "DESIGNER" || r === "ADMIN" },
-  { href: "/reservations", label: "Reservations", icon: ClipboardList, allowed: (r) => r !== null },
-  { href: "/logs", label: "Logs", icon: ScrollText, allowed: (r) => r !== null },
-  { href: "/factory", label: "Factory", icon: Factory, allowed: (r) => canManage(r, "FACTORY") },
-  { href: "/nobox", label: "Nobox", icon: Store, allowed: (r) => canManage(r, "NOBOX") },
+  { href: "/reserve", label: "Reservation Form", icon: Bookmark, allowed: canReserve },
+  ...SOURCES.map((s): NavItem => ({ href: SOURCE_PATHS[s], label: SOURCE_LABELS[s], icon: SOURCE_ICONS[s], allowed: (r) => canManage(r, s) })),
+  { href: "/reservations", label: "Reservation Log", icon: ClipboardList, allowed: (r) => r !== null },
+  { href: "/issuance", label: "Issuance Log", icon: PackageCheck, allowed: (r) => r !== null },
+  { href: "/issuance?new=1", label: "Issue Stock", icon: Truck, allowed: isManager, shortcut: true },
+  // The admin imports from each side's dashboard; a manager has one side, so one link.
+  ...SOURCES.map((s): NavItem => ({
+    href: `${SOURCE_PATHS[s]}?import=1`, label: "Import from Excel", icon: FileSpreadsheet, allowed: (r) => r === SOURCE_MANAGERS[s], shortcut: true,
+  })),
+  { href: "/logs", label: "Stock logs", icon: ScrollText, allowed: (r) => r === "ADMIN" },
   { href: "/users", label: "Team", icon: Users, allowed: canManageUsers },
 ];
 
@@ -81,7 +94,7 @@ function SignInBlock() {
       >
         <LogIn className="h-4 w-4" /> Sign in
       </Link>
-      <p className="mt-2 px-1 text-center text-[11.5px] text-fg-subtle">Sign in to reserve items</p>
+      <p className="mt-2 px-1 text-center text-[11.5px] text-fg-subtle">Designers sign in to reserve items</p>
     </div>
   );
 }
@@ -148,7 +161,8 @@ export function AppShell({ session, children }: { session: Session | null; child
   const pathname = usePathname();
   const [drawer, setDrawer] = React.useState(false);
   const role = session?.role ?? null;
-  const bottomItems = useAllowedNav(role);
+  // Five fit across a phone; the menu drawer has everything else.
+  const bottomItems = useAllowedNav(role).filter((item) => !item.shortcut).slice(0, 5);
   const home = session ? homeFor(session.role) : "/inventory";
 
   React.useEffect(() => {

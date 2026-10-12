@@ -6,8 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import type { Item } from "@/components/items/use-items";
 import { useDebounced } from "@/components/search-input";
 import { apiFetch, toQuery } from "@/lib/client";
-import type { Source } from "@/lib/rbac";
+import { LOCATION_LABELS, type Source } from "@/lib/rbac";
 import { cn, qty } from "@/lib/utils";
+
+/** Name, size and store: what tells apart materials that share a code. */
+function describeItem(item: Item) {
+  return [item.name, item.dimensions, item.location && LOCATION_LABELS[item.location]].filter(Boolean).join(" · ");
+}
 
 /** The workbook's Reorder_Status, with its four values. */
 export function ReorderBadge({ status }: { status: string }) {
@@ -102,7 +107,7 @@ export function MaterialPicker({
       <div className="flex h-10 items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 text-sm">
         <span className="code shrink-0 font-semibold">{value.sku}</span>
         <span className="text-fg-subtle">|</span>
-        <span className="min-w-0 flex-1 truncate">{value.name}</span>
+        <span className="min-w-0 flex-1 truncate">{describeItem(value)}</span>
         <button type="button" onClick={() => onChange(null)} className="rounded p-0.5 text-fg-subtle hover:text-fg" aria-label="Choose another material">
           <X className="h-4 w-4" />
         </button>
@@ -143,7 +148,7 @@ export function MaterialPicker({
                 className="flex w-full items-center gap-2 px-3 py-2 text-left text-[13px] hover:bg-surface-2"
               >
                 <span className="code w-24 shrink-0 truncate font-semibold">{item.sku}</span>
-                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                <span className="min-w-0 flex-1 truncate">{describeItem(item)}</span>
                 <span className="tabular shrink-0 text-[11.5px] text-fg-subtle">{n(item.available)} {item.unit}</span>
               </button>
             </li>

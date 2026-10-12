@@ -14,7 +14,7 @@ const MAX_EDGE = 1600;
  * normalises anything the browser can decode into a modest JPEG, so the user
  * never has to think about formats.
  */
-async function toJpeg(file: File): Promise<File> {
+export async function toJpeg(file: File): Promise<File> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
