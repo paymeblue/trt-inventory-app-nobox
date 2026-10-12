@@ -193,7 +193,6 @@ export function InventoryView() {
                     imageId={item.image_id}
                     name={item.name}
                     className="h-full w-full rounded-none border-0 transition-transform duration-300 group-hover:scale-[1.03]"
-                    iconClassName="h-7 w-7"
                   />
                   <div className="absolute left-2 top-2 flex flex-wrap gap-1">
                     <SourceBadge source={item.source} className="shadow-sm" />
@@ -247,7 +246,7 @@ export function InventoryView() {
                   >
                     <Td>
                       <div className="flex items-center gap-3">
-                        <ProductImage imageId={item.image_id} name={item.name} className="h-10 w-10" />
+                        <ProductImage imageId={item.image_id} name={item.name} className="h-10 w-10" compact />
                         <span className="min-w-0">
                           <span className="block truncate text-[13.5px] font-medium">{item.name}</span>
                           <span className="code block truncate text-[11.5px] text-fg-subtle">

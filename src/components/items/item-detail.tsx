@@ -43,7 +43,7 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
       }
     >
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-[240px_1fr]">
-        <ProductImage imageId={item.image_id} name={item.name} className="aspect-[4/3] w-full rounded-xl" iconClassName="h-8 w-8" />
+        <ProductImage imageId={item.image_id} name={item.name} className="aspect-[4/3] w-full rounded-xl" />
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <SourceBadge source={item.source} />

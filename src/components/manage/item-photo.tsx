@@ -51,7 +51,7 @@ export function ItemPhoto({ item, onChanged }: { item: Item; onChanged: () => vo
         title={label}
         className="group relative h-10 w-10 shrink-0 overflow-hidden rounded-lg focus:outline-none focus:ring-4 focus:ring-[var(--ring)]"
       >
-        <ProductImage imageId={item.image_id} name={item.name} className="h-10 w-10" />
+        <ProductImage imageId={item.image_id} name={item.name} className="h-10 w-10" compact />
         <span
           className={cn(
             "absolute inset-0 flex items-center justify-center rounded-lg bg-black/55 text-white transition-opacity",

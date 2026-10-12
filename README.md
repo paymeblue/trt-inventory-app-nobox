@@ -74,11 +74,23 @@ Both are all-or-nothing and list every problem by row and column.
   `Quantity_Requested` · `Project_Name` · `Purpose_Notes`. Material_Name is needed only when a code is shared;
   Location (Lagos or Abuja) only when a Nobox material is held in both.
 
+### Nobox products workbook
+
+`docs/TRT Nobox products.xlsx` is the Nobox product list as loaded into production (303 products, opening
+stock in Lagos), in the Nobox template: header frozen, an Excel table with filters, drop-downs for Unit and
+Category, quantity checks, a Summary sheet per category, the allowed Lists, and a Review sheet of rows worth
+checking (generated codes, codes that read like descriptions, shared codes, removed duplicates). Clear its
+quantity columns before uploading it again, or the opening stock is added twice.
+
+`npm run db:import-stock -- "<file.xlsx>" NOBOX <account email> [--commit]` uploads a workbook from the
+command line exactly as Import from Excel does; without `--commit` it only checks.
+
 ### Product photos
 
 After an upload, managers add photos row by row: click the photo square beside a material on the dashboard
 (`PUT /api/items/:id/image`, `DELETE` to remove). **No photo yet** in the status filter lists what is missing.
-The material's edit form can also change or remove its photo.
+The material's edit form can also change or remove its photo. Materials without a photo show a
+"No image yet" placeholder (`ProductPlaceholder`, an inline SVG that follows the theme) to designers and visitors.
 
 ### Roles
 
@@ -121,6 +133,7 @@ Open http://localhost:3000.
 | `npm run db:migrate` | Apply everything in `scripts/sql/`, tracked in `_migrations` |
 | `npm run db:seed` | Starting accounts only, no materials (empty database only) |
 | `npm run db:reset` | **Drops the public schema.** Follow with `db:migrate` |
+| `npm run db:import-stock -- "<file.xlsx>" <SIDE> <email> [--commit]` | Upload a stock workbook as that account (see above) |
 | `npm run db:clear-data -- --confirm` | Empty the inventory on every side and keep the accounts (see above) |
 | `npm run db:user -- <email> <password> "<name>" [ROLE]` | Create or update one account. `ROLE` is `ADMIN`, `FACTORY_MANAGER`, `NOBOX_MANAGER`, `READY_CABINETS_MANAGER`, `GERMANA_MANAGER` or `DESIGNER`. |
 
