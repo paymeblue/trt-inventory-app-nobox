@@ -21,7 +21,8 @@ same lookups, the same "Status Check" messages and the same Reorder_Status rule.
 | **Issuance Log** (`/issuance`) | Signed in | Stock_Issue_Log, with who reserved each issue (name, job title, email), the project and purpose, and what is still to issue. Each side's team gets **Issue Stock** here and in the sidebar. |
 | **Stock logs** (`/logs`) | Admin in the sidebar; managers from their dashboard | Stock_Addition_Log, Stock_Adjustment_Log. |
 | **Factory / Nobox / Ready Cabinets / Germana** (`/factory`, `/nobox`, `/ready-cabinets`, `/germana`) | That side's team, admin | Dashboard (Total Materials, Opening Qty, Available Qty, Reserved Qty, Issued Qty, Low Stock SKUs), the reorder alert list with Reorder_Quantity, the three forms, and Inventory_Master (Opening, Added, Reserved, Issued, In stock, Available, Reorder_Status). |
-| **Team** (`/users`) | Admin | Accounts and roles. |
+| **Categories** (`/categories`) | Each side's team, admin | Every category with its items and how many have stock. The **Active** switch archives a category: its items are kept but hidden from the inventory, the dashboards and their counts. "Archive the ones with no stock" does it in one click. Adding stock to an item re-activates its category. Rename, add, delete (empty only). |
+| **Team** (`/users`) | Admin | Accounts and roles. Disable an account, or delete it for good (logs keep the person's name; you cannot delete yourself or the last administrator). |
 
 ### Quantities, as the workbook defines them
 

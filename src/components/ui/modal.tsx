@@ -83,7 +83,7 @@ export function Modal({
         <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-4">{children}</div>
 
         {footer ? (
-          <div className="safe-bottom flex flex-wrap items-center justify-end gap-2 border-t border-border bg-surface-2/50 px-5 py-3.5">
+          <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border bg-surface-2/50 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-5 sm:pb-5">
             {footer}
           </div>
         ) : null}

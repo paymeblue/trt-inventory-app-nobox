@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Users, Plus, Pencil, KeyRound } from "lucide-react";
+import { Users, Plus, Pencil, KeyRound, Trash2 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,6 +34,8 @@ export function UsersView() {
   const [search, setSearch] = React.useState("");
   const [creating, setCreating] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
+  const [deleting, setDeleting] = React.useState<Row | null>(null);
+  const [removing, setRemoving] = React.useState(false);
   const [form, setForm] = React.useState(EMPTY);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -87,6 +89,20 @@ export function UsersView() {
       await load();
     } catch (err) {
       toast(err instanceof Error ? err.message : "Could not update", "error");
+    }
+  }
+
+  async function remove(row: Row) {
+    setRemoving(true);
+    try {
+      await apiFetch(`/api/users/${row.id}`, { method: "DELETE" });
+      toast(`${row.full_name} deleted.`);
+      setDeleting(null);
+      await load();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "Could not delete", "error");
+    } finally {
+      setRemoving(false);
     }
   }
 
@@ -195,6 +211,16 @@ export function UsersView() {
                           {u.is_active ? "Disable" : "Enable"}
                         </button>
                       ) : null}
+                      {u.id !== me.sub ? (
+                        <button
+                          onClick={() => setDeleting(u)}
+                          className="rounded-lg p-1.5 text-fg-subtle transition-colors hover:bg-danger-soft hover:text-danger"
+                          aria-label={`Delete ${u.full_name}`}
+                          title={`Delete ${u.full_name}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      ) : null}
                     </div>
                   </Td>
                 </Tr>
@@ -218,6 +244,26 @@ export function UsersView() {
           ))}
         </div>
       </Card>
+
+      {deleting ? (
+        <Modal
+          open
+          size="sm"
+          onClose={() => setDeleting(null)}
+          title={`Delete ${deleting.full_name}?`}
+          footer={
+            <>
+              <Button variant="ghost" onClick={() => setDeleting(null)}>Keep account</Button>
+              <Button variant="danger" loading={removing} onClick={() => remove(deleting)}>Delete account</Button>
+            </>
+          }
+        >
+          <p className="text-[13.5px] leading-relaxed text-fg-muted">
+            {deleting.email} will no longer be able to sign in, and the account cannot be restored. Their reservations,
+            issues and adjustments stay in the logs under their name. To stop access for now, use Disable instead.
+          </p>
+        </Modal>
+      ) : null}
 
       <Modal
         open={creating || Boolean(editing)}

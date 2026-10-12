@@ -45,7 +45,7 @@ export type ItemsResponse = {
   items: Item[];
   total: number;
   categories: string[];
-  counts: { bySource: Record<Source, number>; low: number; reorder: number; out: number; reserved: number };
+  counts: { bySource: Record<Source, number>; low: number; reorder: number; out: number; reserved: number; archived: number };
   page: number;
   pageSize: number;
 };

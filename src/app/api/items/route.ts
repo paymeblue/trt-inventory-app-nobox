@@ -2,7 +2,7 @@ import { query, transaction } from "@/lib/db";
 import { getSession, requireManager } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
 import { hasLocations, isLocation, isSource, SOURCE_LABELS, SOURCE_LIST, SOURCES, type Source } from "@/lib/rbac";
-import { AVAILABLE_SQL, ensureCategory, ITEM_COLUMNS, ITEM_FROM, parseItemBody, recordMovement, RESERVED_SQL, STATUS_SQL } from "@/lib/items";
+import { ACTIVE_SQL, AVAILABLE_SQL, ensureCategory, ITEM_COLUMNS, ITEM_FROM, parseItemBody, recordMovement, RESERVED_SQL, STATUS_SQL } from "@/lib/items";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,7 +37,8 @@ export const GET = handle(async (req: Request) => {
 
   // Source scopes everything, including the category list and the counts, so
   // the filters only ever offer values that exist on the side being viewed.
-  const scope: string[] = [];
+  // Items in archived categories are kept but not shown, nor counted.
+  const scope: string[] = [ACTIVE_SQL];
   const scopeParams: unknown[] = [];
   if (isSource(source)) {
     scopeParams.push(source);
@@ -73,7 +74,6 @@ export const GET = handle(async (req: Request) => {
   if (status === "nophoto") where.push("i.image_id IS NULL");
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const scopeSql = scope.length ? `WHERE ${scope.join(" AND ")}` : "";
 
   const [items, totals, categories, counts] = await Promise.all([
     query(
@@ -85,17 +85,19 @@ export const GET = handle(async (req: Request) => {
     // From the categories list rather than the items, so a category a manager
     // has just created is offered before anything is filed under it.
     query<{ category: string }>(
-      `SELECT DISTINCT i.name AS category FROM categories i ${scopeSql} ORDER BY 1`,
+      `SELECT DISTINCT c.name AS category FROM categories c
+        WHERE c.is_active ${isSource(source) ? "AND c.source = $1" : ""} ORDER BY 1`,
       scopeParams,
     ),
     // Per-side totals are always group-wide (they label the side tabs); low
     // and out follow the side being viewed.
-    query<Record<Source, number> & { low: number; reorder: number; out: number; reserved: number }>(
-      `SELECT ${SOURCES.map((s) => `COUNT(*) FILTER (WHERE i.source = '${s}')::int AS "${s}"`).join(", ")},
-              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND (${STATUS_SQL}) = 'LOW')::int AS low,
-              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND (${STATUS_SQL}) = 'REORDER NOW')::int AS reorder,
-              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND (${STATUS_SQL}) = 'OUT OF STOCK')::int AS out,
-              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND ${RESERVED_SQL} > 0)::int AS reserved
+    query<Record<Source, number> & { low: number; reorder: number; out: number; reserved: number; archived: number }>(
+      `SELECT ${SOURCES.map((s) => `COUNT(*) FILTER (WHERE i.source = '${s}' AND ${ACTIVE_SQL})::int AS "${s}"`).join(", ")},
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND NOT ${ACTIVE_SQL})::int AS archived,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND ${ACTIVE_SQL} AND (${STATUS_SQL}) = 'LOW')::int AS low,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND ${ACTIVE_SQL} AND (${STATUS_SQL}) = 'REORDER NOW')::int AS reorder,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND ${ACTIVE_SQL} AND (${STATUS_SQL}) = 'OUT OF STOCK')::int AS out,
+              COUNT(*) FILTER (WHERE ($1::text IS NULL OR i.source = $1) AND ${ACTIVE_SQL} AND ${RESERVED_SQL} > 0)::int AS reserved
          FROM items i`,
       [isSource(source) ? source : null],
     ),
@@ -108,6 +110,7 @@ export const GET = handle(async (req: Request) => {
     counts: {
       bySource: Object.fromEntries(SOURCES.map((s) => [s, counts[0][s]])),
       low: counts[0].low, reorder: counts[0].reorder, out: counts[0].out, reserved: counts[0].reserved,
+      archived: counts[0].archived,
     },
     page,
     pageSize,

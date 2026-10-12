@@ -33,6 +33,20 @@ export const STATUS_SQL = `CASE
   WHEN ${AVAILABLE_SQL} <= i.reorder_level * 1.25 THEN 'LOW'
   ELSE 'OK' END`;
 
+/** True for an item (aliased `i`) whose category is not archived. */
+export const ACTIVE_SQL = `NOT EXISTS (SELECT 1 FROM categories c
+  WHERE c.source = i.source AND c.name = i.category AND NOT c.is_active)`;
+
+/** Stock arriving for an item brings its archived category back into view. */
+export async function reactivateCategoryOf(client: PoolClient, itemId: string) {
+  await client.query(
+    `UPDATE categories c SET is_active = true, updated_at = now()
+       FROM items i
+      WHERE i.id = $1 AND c.source = i.source AND c.name = i.category AND NOT c.is_active`,
+    [itemId],
+  );
+}
+
 export const REORDER_STATUSES = ["OK", "LOW", "REORDER NOW", "OUT OF STOCK"] as const;
 export type ReorderStatus = (typeof REORDER_STATUSES)[number];
 
@@ -269,6 +283,7 @@ export async function applyImport(
       await recordMovement(client, {
         itemId: made[0].id, source, kind: "OPENING", delta: quantity, balance: quantity, note, userId: opts.userId,
       });
+      if (quantity > 0) await reactivateCategoryOf(client, made[0].id);
       continue;
     }
 
@@ -301,6 +316,7 @@ export async function applyImport(
       await recordMovement(client, {
         itemId: t.id!, source, kind: "ADDITION", delta: quantity, balance: after, note: `${add[0].ref} · ${note}`, userId: opts.userId,
       });
+      await reactivateCategoryOf(client, t.id!);
     }
   }
 

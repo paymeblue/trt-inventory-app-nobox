@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { HttpError } from "./session";
-import { recordMovement } from "./items";
+import { reactivateCategoryOf, recordMovement } from "./items";
 import { lockItem, releaseReservation, resolveReservationRef, type Person } from "./reservations";
 
 /**
@@ -29,6 +29,7 @@ export async function addStock(
     itemId: item.id, source: item.source, kind: "ADDITION", delta: quantity, balance,
     note: [rows[0].ref, input.supplierRef, input.notes].filter(Boolean).join(" · "), userId: who.id,
   });
+  await reactivateCategoryOf(client, item.id);
   return { ref: rows[0].ref, quantity: balance, source: item.source };
 }
 

@@ -304,3 +304,16 @@ describe("Excel reservation import", () => {
     assert.deepEqual(rows, [{ location: "ABUJA", name: "MATT GOLD" }]);
   });
 });
+
+describe("Archived categories and the Stock Addition form", () => {
+  test("a Stock Addition makes the item's archived category active again", async () => {
+    await pool.query(
+      "INSERT INTO categories (source, name, is_active) VALUES ('FACTORY', 'SLOW MOVERS', false)",
+    );
+    await pool.query("UPDATE items SET category = 'SLOW MOVERS' WHERE id = $1", [itemId]);
+    await inTransaction(pool, (c) => addStock(c, { itemId, quantity: 3 }, manager));
+    const { rows } = await pool.query("SELECT is_active FROM categories WHERE name = 'SLOW MOVERS'");
+    assert.equal(rows[0].is_active, true);
+  });
+});
+

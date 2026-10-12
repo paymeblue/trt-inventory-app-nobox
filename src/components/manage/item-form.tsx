@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Check, MapPin } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
@@ -9,7 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import type { Item } from "@/components/items/use-items";
 import { apiFetch } from "@/lib/client";
 import { hasLocations, LOCATION_LABELS, LOCATIONS, SOURCE_LABELS, type Source } from "@/lib/rbac";
-import { slugToSku } from "@/lib/utils";
+import { cn, slugToSku } from "@/lib/utils";
 
 const UNITS = ["Sheet", "Pcs", "Unit", "Slab", "m", "kg", "litre", "roll", "pack", "set"];
 
@@ -155,9 +156,28 @@ export function ItemForm({
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {hasLocations(source) && !editing ? (
             <Field label="Location" hint="the store holding it" className="sm:col-span-2">
-              <Select value={form.location} onChange={set("location")}>
-                {LOCATIONS.map((l) => <option key={l} value={l}>{LOCATION_LABELS[l]}</option>)}
-              </Select>
+              <div role="radiogroup" aria-label="Location" className="grid grid-cols-2 gap-2">
+                {LOCATIONS.map((l) => {
+                  const on = form.location === l;
+                  return (
+                    <button
+                      key={l}
+                      type="button"
+                      role="radio"
+                      aria-checked={on}
+                      onClick={() => setForm((f) => ({ ...f, location: l }))}
+                      className={cn(
+                        "flex h-11 items-center justify-center gap-2 rounded-lg border text-sm font-medium transition-colors",
+                        "focus:outline-none focus-visible:ring-4 focus-visible:ring-[var(--ring)]",
+                        on ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface-2 text-fg-muted hover:border-border-strong hover:text-fg",
+                      )}
+                    >
+                      <MapPin className="h-4 w-4" /> {LOCATION_LABELS[l]}
+                      {on ? <Check className="h-4 w-4" /> : null}
+                    </button>
+                  );
+                })}
+              </div>
             </Field>
           ) : null}
           <Field label="Category">

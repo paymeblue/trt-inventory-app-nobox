@@ -2,7 +2,7 @@ import { query } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { handle, ok } from "@/lib/api";
 import { isSource } from "@/lib/rbac";
-import { AVAILABLE_SQL, ISSUED_SQL, RESERVED_SQL, STATUS_SQL } from "@/lib/items";
+import { ACTIVE_SQL, AVAILABLE_SQL, ISSUED_SQL, RESERVED_SQL, STATUS_SQL } from "@/lib/items";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +15,8 @@ export const dynamic = "force-dynamic";
 export const GET = handle(async (req: Request) => {
   await requireSession();
   const source = new URL(req.url).searchParams.get("source");
-  const scope = isSource(source) ? "WHERE i.source = $1" : "";
+  // Archived categories are left out of every figure.
+  const scope = `WHERE ${ACTIVE_SQL}${isSource(source) ? " AND i.source = $1" : ""}`;
   const params = isSource(source) ? [source] : [];
 
   const [totals, reorder] = await Promise.all([

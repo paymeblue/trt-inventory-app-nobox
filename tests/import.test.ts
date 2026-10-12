@@ -269,3 +269,19 @@ describe("Nobox Lagos and Abuja", () => {
     assert.match(factory.errors[0].message, /Only Nobox/);
   });
 });
+
+describe("Archived categories", () => {
+  const active = async (name: string) =>
+    (await pool.query<{ is_active: boolean }>("SELECT is_active FROM categories WHERE name = $1", [name])).rows[0].is_active;
+
+  test("stock uploaded into an archived category makes it active again; an empty row does not", async () => {
+    await upload([row("FINSA 116", "LISSA OAK", 0, { category: "FINSA" })]);
+    await pool.query("UPDATE categories SET is_active = false WHERE name = 'FINSA'");
+
+    await upload([row("FINSA 116", "", "")]);
+    assert.equal(await active("FINSA"), false, "a row adding nothing leaves it archived");
+
+    await upload([row("FINSA 116", "", 12)]);
+    assert.equal(await active("FINSA"), true);
+  });
+});

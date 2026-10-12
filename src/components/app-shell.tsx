@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LogOut, Menu, X, ChevronDown, LayoutGrid, Users, ClipboardList, LogIn, ScrollText, Bookmark, Truck, PackageCheck, FileSpreadsheet,
+  LogOut, Menu, X, ChevronDown, LayoutGrid, Users, ClipboardList, LogIn, ScrollText, Bookmark, Truck, PackageCheck, FileSpreadsheet, Tags,
 } from "lucide-react";
 import { Logo } from "./logo";
 import { ThemeToggle } from "./theme";
@@ -33,6 +33,7 @@ const NAV: NavItem[] = [
   { href: "/inventory", label: "Inventory", icon: LayoutGrid, allowed: () => true },
   { href: "/reserve", label: "Reservation Form", icon: Bookmark, allowed: canReserve },
   ...SOURCES.map((s): NavItem => ({ href: SOURCE_PATHS[s], label: SOURCE_LABELS[s], icon: SOURCE_ICONS[s], allowed: (r) => canManage(r, s) })),
+  { href: "/categories", label: "Categories", icon: Tags, allowed: isManager },
   { href: "/reservations", label: "Reservation Log", icon: ClipboardList, allowed: (r) => r !== null },
   { href: "/issuance", label: "Issuance Log", icon: PackageCheck, allowed: (r) => r !== null },
   { href: "/issuance?new=1", label: "Issue Stock", icon: Truck, allowed: isManager, shortcut: true },

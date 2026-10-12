@@ -18,27 +18,37 @@ async function find(id: string) {
   );
 }
 
-/** Renames a category and every item filed under it, in one go. */
+/**
+ * Body: { name } renames the category and every item filed under it;
+ * { isActive } archives it (its items are hidden) or makes it active again.
+ */
 export const PATCH = handle(async (req: Request, ctx: Ctx) => {
   const { id } = await ctx.params;
   const category = await find(id);
   if (!category) return fail(404, "Category not found.");
   await requireManager(category.source);
 
-  const body = await readJson<{ name?: unknown }>(req);
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  if (!name) return fail(400, "Give the category a name.");
-  if (name.length > 60) return fail(400, "Category names must be 60 characters or fewer.");
+  const body = await readJson<{ name?: unknown; isActive?: unknown }>(req);
+  if (body.isActive !== undefined && typeof body.isActive !== "boolean") return fail(400, "isActive must be true or false.");
+  const name = typeof body.name === "string" ? body.name.trim() : null;
+  if (body.name !== undefined) {
+    if (!name) return fail(400, "Give the category a name.");
+    if (name.length > 60) return fail(400, "Category names must be 60 characters or fewer.");
+  }
 
   const moved = await transaction(async (client) => {
-    await client.query("UPDATE categories SET name = $1, updated_at = now() WHERE id = $2", [name, id]);
+    await client.query(
+      "UPDATE categories SET name = COALESCE($1, name), is_active = COALESCE($2, is_active), updated_at = now() WHERE id = $3",
+      [name, body.isActive ?? null, id],
+    );
+    if (!name || name === category.name) return 0;
     const { rowCount } = await client.query(
       "UPDATE items SET category = $1 WHERE source = $2 AND category = $3",
       [name, category.source, category.name],
     );
     return rowCount ?? 0;
   });
-  return ok({ id, name, items: moved });
+  return ok({ id, name: name ?? category.name, isActive: body.isActive, items: moved });
 });
 
 /** Only an empty category can be deleted, so no item silently loses its category. */

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Ban, Boxes, ClipboardList, Download, FileDown, History, PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal,
+  Archive, Ban, Boxes, ClipboardList, Download, FileDown, History, PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal,
   Tags, Trash2, TriangleAlert, Truck, Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -22,7 +22,6 @@ import { useItems, type Item } from "@/components/items/use-items";
 import { ReorderBadge } from "@/components/forms/form-parts";
 import { StockAdditionForm, StockAdjustmentForm, StockIssueForm } from "@/components/forms/stock-forms";
 import { ItemForm } from "./item-form";
-import { CategoriesModal } from "./categories-modal";
 import { ItemPhoto } from "./item-photo";
 import { templateUrl, UploadModal } from "./upload-modal";
 import { apiFetch } from "@/lib/client";
@@ -71,7 +70,6 @@ export function ManageView({ source }: { source: Source }) {
   const [deleting, setDeleting] = React.useState<Item | null>(null);
   // The sidebar's "Import from Excel" lands here with ?import=1.
   const [uploading, setUploading] = React.useState(search.get("import") === "1");
-  const [managingCategories, setManagingCategories] = React.useState(false);
   const [dashboard, setDashboard] = React.useState<Dashboard | null>(null);
   const [waiting, setWaiting] = React.useState<number | null>(null);
   const [activity, setActivity] = React.useState<Activity[] | null>(null);
@@ -154,9 +152,15 @@ export function ManageView({ source }: { source: Source }) {
               <Button size="sm" variant="ghost" onClick={() => setCreating(true)}><Plus className="h-3.5 w-3.5" /> Material</Button>
               <a href={templateUrl(source)} className={buttonClass("ghost", "sm")} title={`Blank ${label} upload template`}><Download className="h-3.5 w-3.5" /> Template</a>
               <a href={templateUrl(source, true)} className={buttonClass("ghost", "sm")} title={`Every ${label} material in the upload template, ready to edit and upload again`}><FileDown className="h-3.5 w-3.5" /> Export</a>
-              <Button size="sm" variant="ghost" onClick={() => setManagingCategories(true)}><Tags className="h-3.5 w-3.5" /> Categories</Button>
+              <Link href={`/categories?source=${source}`} className={buttonClass("ghost", "sm")}><Tags className="h-3.5 w-3.5" /> Categories</Link>
             </div>
           </div>
+          {data?.counts.archived ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-surface-2/40 px-3 py-2 text-[12.5px] text-fg-muted sm:px-4">
+              <span className="flex items-center gap-1.5"><Archive className="h-3.5 w-3.5" /> {data.counts.archived.toLocaleString()} items in archived categories are hidden here and from designers.</span>
+              <Link href={`/categories?source=${source}`} className="font-medium text-accent hover:underline">Manage categories</Link>
+            </div>
+          ) : null}
           <div className="border-b border-border p-3 sm:p-4">
             <ItemFilters
               filters={filters} onChange={setFilters} categories={data?.categories ?? []} active={active}
@@ -306,7 +310,6 @@ export function ManageView({ source }: { source: Source }) {
         />
       ) : null}
       {uploading ? <UploadModal source={source} onClose={closeUpload} onApplied={() => { closeUpload(); refresh(); }} /> : null}
-      {managingCategories ? <CategoriesModal source={source} onClose={() => setManagingCategories(false)} onChanged={refresh} /> : null}
 
       {deleting ? (
         <Modal

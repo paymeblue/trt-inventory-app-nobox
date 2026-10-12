@@ -6,14 +6,16 @@ import { isSource, SOURCE_LIST } from "@/lib/rbac";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** One side's categories, with how many items each holds. */
+/** One side's categories, with how many items each holds and how many of those have stock. */
 export const GET = handle(async (req: Request) => {
   await requireSession();
   const source = new URL(req.url).searchParams.get("source");
   if (!isSource(source)) return fail(400, `Choose ${SOURCE_LIST}.`);
 
   const items = await query(
-    `SELECT c.id, c.name, COUNT(i.id)::int AS item_count
+    `SELECT c.id, c.name, c.is_active, c.updated_at, COUNT(i.id)::int AS item_count,
+            COUNT(i.id) FILTER (WHERE i.quantity > 0)::int AS in_stock,
+            COALESCE(SUM(i.quantity), 0)::float8 AS units
        FROM categories c
        LEFT JOIN items i ON i.source = c.source AND i.category = c.name
       WHERE c.source = $1
