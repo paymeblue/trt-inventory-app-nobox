@@ -22,6 +22,7 @@ export type Reservation = {
   status: "RESERVED" | "PART_ISSUED" | "ISSUED" | "CANCELLED"; legacy_status: string | null;
   available_at_request: number | null; created_at: string; closed_at: string | null;
   reserved_by: string | null; reserved_for: ReservedFor | null; reserved_by_name: string | null; reserved_by_email: string | null; reserved_by_title: string | null;
+  reserved_by_company: Item["source"] | null;
   item_name: string; sku: string; unit: string; image_id: string | null; category: string | null;
   location: Item["location"]; dimensions: string | null;
   in_stock: number; closed_by_name: string | null;

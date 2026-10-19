@@ -11,7 +11,7 @@ import type { Reservation } from "@/components/reservations/reserve-modal";
 import { useRequiredSession } from "@/components/session-context";
 import { Lookup, MaterialPicker, n, StatusCheck } from "./form-parts";
 import { apiFetch } from "@/lib/client";
-import { RESERVED_FOR_LABELS, type Source } from "@/lib/rbac";
+import { RESERVED_FOR_LABELS, SOURCE_LABELS, type Source } from "@/lib/rbac";
 import { cn, qty } from "@/lib/utils";
 
 /** The form's "… By" and "… Email" cells, filled from the signed-in account. */
@@ -207,7 +207,7 @@ export function StockIssueForm({
         {r ? (
           <Lookup rows={[
             ["Reserved By", [r.reserved_by_name, r.reserved_by_title].filter(Boolean).join(" · ") || "—"],
-            ["For", r.reserved_for ? RESERVED_FOR_LABELS[r.reserved_for] : "—"],
+            ["For", r.reserved_for ? [RESERVED_FOR_LABELS[r.reserved_for], r.reserved_by_company && SOURCE_LABELS[r.reserved_by_company]].filter(Boolean).join(" · ") : "—"],
             ["Email", r.reserved_by_email ?? "—"],
             ["Project Name", r.project],
             ["Purpose / Notes", r.notes ?? "—"],

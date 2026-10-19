@@ -1,4 +1,4 @@
-# TRT Nobox — Inventory
+# Inventory Management
 
 One place to see everything held in the TRT Factory and at Nobox. Designers
 and the sales teams browse it and reserve stock for their projects and orders; the Factory and Nobox managers
@@ -47,8 +47,9 @@ returned, and at least hourly. A material nothing has been issued from has a Reo
 
 ### Design and Sales
 
-Designers and the sales teams (the **Sales** role) reserve stock the same way. Every reservation is marked
-**Design** or **Sales** for the person responsible, in the Reservation Log, the Issuance Log, the Stock Issue form
+Designers and the sales teams (the **Sales** role) reserve stock the same way. Only an administrator creates
+accounts, with a valid email; a Sales account must name the company it sells for (Factory, Nobox, Ready Cabinets
+or Germana), a Designer may. Every reservation is marked **Design** or **Sales**, with that company, for the person responsible, in the Reservation Log, the Issuance Log, the Stock Issue form
 and the notifications.
 
 One deliberate difference: the workbook's formulas move Available_Qty by *twice*

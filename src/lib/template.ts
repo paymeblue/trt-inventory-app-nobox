@@ -134,7 +134,7 @@ export function buildTemplate(source: Source, materials: TemplateMaterial[] = []
 
   const side = SOURCE_LABELS[source];
   const guide = XLSX.utils.aoa_to_sheet([
-    [`TRT Nobox stock upload template · ${side}`],
+    [`Inventory Management stock upload template · ${side}`],
     [],
     [`Fill in the ${TEMPLATE_SHEET} sheet, one row per material, and upload it with Import from Excel on the ${side} dashboard.`],
     ...(hasLocations(source)

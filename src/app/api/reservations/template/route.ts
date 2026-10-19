@@ -8,7 +8,7 @@ export const GET = handle(async () => {
   return new Response(new Uint8Array(buildReservationTemplate()), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="TRT Nobox reservation template.xlsx"',
+      "Content-Disposition": 'attachment; filename="Reservation template.xlsx"',
       "Cache-Control": "no-store",
     },
   });

@@ -8,7 +8,7 @@ import { PageHeader } from "@/components/page-header";
 import { Card } from "@/components/ui/card";
 import { buttonClass } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty";
-import { Pagination } from "@/components/ui/pagination";
+import { DEFAULT_PAGE_SIZE, Pagination, PAGE_SIZES } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { ProductImage } from "@/components/product-image";
 import { LiveIndicator, LocationBadge, SourceBadge } from "@/components/status";
@@ -20,7 +20,6 @@ import { useSession } from "@/components/session-context";
 import { canReserve, SOURCE_LABELS, SOURCE_LIST, SOURCES, type Source } from "@/lib/rbac";
 import { cn, qty, relativeTime } from "@/lib/utils";
 
-const PAGE_SIZE = 48;
 
 
 const TABS: { value: Source | ""; label: string }[] = [
@@ -32,6 +31,7 @@ export function InventoryView() {
   const [source, setSource] = React.useState("");
   const [view, setView] = React.useState<"grid" | "table">("grid");
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const [open, setOpen] = React.useState<Item | null>(null);
 
 
@@ -41,7 +41,7 @@ export function InventoryView() {
   // Signed-out visitors still see Reserve; they are asked to sign in first.
   const reserves = !me || canReserve(me.role);
 
-  const { data, loading, error, syncedAt, liveAt, changed, reload } = useItems({ ...params, source, page, pageSize: PAGE_SIZE });
+  const { data, loading, error, syncedAt, liveAt, changed, reload } = useItems({ ...params, source, page, pageSize });
 
   const reserve = (item: Item) => router.push(`/reserve?item=${item.id}`);
 
@@ -284,8 +284,8 @@ export function InventoryView() {
           </div>
         )}
 
-        {data && data.total > PAGE_SIZE ? (
-          <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} />
+        {data && data.total > PAGE_SIZES[0] ? (
+          <Pagination page={page} pageSize={pageSize} total={data.total} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1); }} />
         ) : null}
       </Card>
 

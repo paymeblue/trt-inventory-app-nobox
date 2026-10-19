@@ -8,7 +8,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import { EmptyState } from "@/components/ui/empty";
-import { Pagination } from "@/components/ui/pagination";
+import { DEFAULT_PAGE_SIZE, Pagination, PAGE_SIZES } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { SearchInput, useDebounced } from "@/components/search-input";
 import { LiveIndicator, LocationBadge, ReservedForBadge, SourceBadge } from "@/components/status";
@@ -24,10 +24,10 @@ type Row = {
   sku: string; item_name: string; unit: string; quantity: number; notes: string | null; location: Location | null;
   reservation_ref: string | null; project: string | null;
   reserved_by_name: string | null; reserved_by_email: string | null; reserved_by_title: string | null; reserved_for: ReservedFor | null;
+  reserved_by_company: Source | null;
   purpose: string | null; reserved_qty: number | null; balance: number | null; reservation_status: string | null;
 };
 
-const PAGE_SIZE = 50;
 
 /** The Stock_Issue_Log: what left the store, for whom (Design or Sales) and which project. */
 export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
@@ -38,11 +38,12 @@ export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
   const [source, setSource] = React.useState<string>(home ?? "");
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const [issuing, setIssuing] = React.useState(startIssuing && issues);
   const term = useDebounced(search, 300);
   const [data, setData] = React.useState<{ items: Row[]; total: number; quantity: number } | null>(null);
 
-  const qs = toQuery({ source, q: term, page, pageSize: PAGE_SIZE });
+  const qs = toQuery({ source, q: term, page, pageSize });
   const load = React.useCallback(async () => {
     setData(await apiFetch(`/api/logs/issues${qs}`));
   }, [qs]);
@@ -127,7 +128,7 @@ export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
                     {r.reserved_qty !== null ? <span className="block text-[11px] font-normal text-fg-subtle">of {qty(r.reserved_qty)} reserved</span> : null}
                   </Td>
                   <Td className="whitespace-nowrap text-[12.5px]">
-                    <span className="flex items-center gap-1.5">{r.reserved_by_name ?? "—"} <ReservedForBadge value={r.reserved_for} /></span>
+                    <span className="flex items-center gap-1.5">{r.reserved_by_name ?? "—"} <ReservedForBadge value={r.reserved_for} company={r.reserved_by_company} /></span>
                     {r.reserved_by_title ? <span className="block text-[11.5px] text-fg-subtle">{r.reserved_by_title}</span> : null}
                     {r.reserved_by_email ? <span className="block text-[11px] text-fg-subtle">{r.reserved_by_email}</span> : null}
                   </Td>
@@ -148,7 +149,9 @@ export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
             </tbody>
           </TableWrap>
         )}
-        {data && data.total > PAGE_SIZE ? <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} /> : null}
+        {data && data.total > PAGE_SIZES[0] ? (
+          <Pagination page={page} pageSize={pageSize} total={data.total} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1); }} />
+        ) : null}
       </Card>
 
       {issuing ? (

@@ -28,7 +28,7 @@ export function buildReservationTemplate(): Buffer {
   XLSX.utils.book_append_sheet(book, sheet, RESERVATION_SHEET);
 
   const guide = XLSX.utils.aoa_to_sheet([
-    ["TRT Nobox reservation template"],
+    ["Inventory Management reservation template"],
     [],
     ["One row per item. Upload it from the Inventory page with Reserve from Excel."],
     ["Do not rename, reorder, add or remove columns. A file whose headers differ is rejected."],

@@ -94,3 +94,8 @@ export function stockState(onHand: number, reorder: number) {
   if (reorder > 0 && onHand <= reorder) return "low" as const;
   return "ok" as const;
 }
+
+/** name@domain.tld: no spaces, one @, and a domain with a dot in it. */
+export function isValidEmail(email: string): boolean {
+  return email.length <= 254 && /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(email);
+}

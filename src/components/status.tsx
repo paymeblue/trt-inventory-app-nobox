@@ -30,13 +30,14 @@ export function SourceBadge({ source, className }: { source: Source; className?:
 }
 
 /** Whether the person responsible for a reservation is in Design or in Sales. Neutral, as the colours belong to the sides. */
-export function ReservedForBadge({ value, className }: { value: ReservedFor | null | undefined; className?: string }) {
+export function ReservedForBadge({ value, company, className }: { value: ReservedFor | null | undefined; company?: Source | null; className?: string }) {
   if (!value) return null;
   const Icon = value === "SALES" ? ShoppingBag : PenTool;
   return (
     <Badge tone="neutral" className={className}>
       <Icon className="h-3 w-3" />
       {RESERVED_FOR_LABELS[value]}
+      {company ? ` · ${SOURCE_LABELS[company]}` : ""}
     </Badge>
   );
 }

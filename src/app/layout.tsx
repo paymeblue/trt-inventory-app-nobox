@@ -18,8 +18,8 @@ const mono = JetBrains_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "TRT Nobox Inventory",
-    template: "%s · TRT Nobox Inventory",
+    default: "Inventory Management",
+    template: "%s · Inventory Management",
   },
   description:
     "Everything in the TRT Factory, Nobox, Ready Cabinets and Germana inventories, in one place.",

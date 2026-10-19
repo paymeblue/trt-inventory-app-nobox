@@ -6,7 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   LogOut, Menu, X, ChevronDown, LayoutGrid, Users, ClipboardList, LogIn, ScrollText, Bookmark, Truck, PackageCheck, FileSpreadsheet, Tags,
 } from "lucide-react";
-import { Logo } from "./logo";
+import { Logo, ReadyCabinetsLink } from "./logo";
 import { ThemeToggle } from "./theme";
 import {
   canManage, canManageUsers, canReserve, homeFor, isManager, ROLE_LABELS, SOURCE_LABELS, SOURCE_MANAGERS, SOURCE_PATHS, SOURCES, type Role,
@@ -81,6 +81,9 @@ function SidebarContent({ role, pathname, onNavigate }: { role: Role | null; pat
       {items.map((item) => (
         <NavLink key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
       ))}
+      <div className="mt-3 border-t border-border pt-3">
+        <ReadyCabinetsLink />
+      </div>
     </nav>
   );
 }

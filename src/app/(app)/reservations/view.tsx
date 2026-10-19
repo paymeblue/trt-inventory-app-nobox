@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Field, Input, Select } from "@/components/ui/field";
 import { EmptyState } from "@/components/ui/empty";
-import { Pagination } from "@/components/ui/pagination";
+import { DEFAULT_PAGE_SIZE, Pagination, PAGE_SIZES } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { SearchInput, useDebounced } from "@/components/search-input";
@@ -23,7 +23,6 @@ import { apiFetch, toQuery } from "@/lib/client";
 import { canManage, canReserve, sideOf, SOURCE_LABELS, SOURCES, type Source } from "@/lib/rbac";
 import { cn, formatDateTime, qty, relativeTime } from "@/lib/utils";
 
-const PAGE_SIZE = 50;
 
 const STATUSES = [
   { value: "OPEN", label: "Waiting to issue" },
@@ -56,6 +55,7 @@ export function ReservationsView() {
   const [mine, setMine] = React.useState(me.role === "DESIGNER" || me.role === "SALES");
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const term = useDebounced(search, 300);
 
   const [data, setData] = React.useState<Response | null>(null);
@@ -64,7 +64,7 @@ export function ReservationsView() {
   const [cancelling, setCancelling] = React.useState<Reservation | null>(null);
   const [creating, setCreating] = React.useState<"form" | "excel" | null>(null);
 
-  const qs = toQuery({ status, source, q: term, mine: mine ? "1" : "", page, pageSize: PAGE_SIZE });
+  const qs = toQuery({ status, source, q: term, mine: mine ? "1" : "", page, pageSize });
   const load = React.useCallback(async () => {
     const next = await apiFetch<Response>(`/api/reservations${qs}`);
     setData(next);
@@ -190,7 +190,7 @@ export function ReservationsView() {
                     <Td className="hidden whitespace-nowrap text-[12.5px] text-fg-muted lg:table-cell">
                       <span className="flex items-center gap-1.5">
                         {r.reserved_by === me.sub ? "You" : r.reserved_by_name ?? r.reserved_by_email ?? "—"}
-                        <ReservedForBadge value={r.reserved_for} />
+                        <ReservedForBadge value={r.reserved_for} company={r.reserved_by_company} />
                       </span>
                       {r.reserved_by !== me.sub && r.reserved_by_title ? <span className="block text-[11.5px] text-fg-subtle">{r.reserved_by_title}</span> : null}
                       {r.closed_by_name ? <span className="block text-[11.5px] text-fg-subtle">closed by {r.closed_by_name}</span> : null}
@@ -220,7 +220,9 @@ export function ReservationsView() {
           </TableWrap>
         )}
 
-        {data && data.total > PAGE_SIZE ? <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} /> : null}
+        {data && data.total > PAGE_SIZES[0] ? (
+          <Pagination page={page} pageSize={pageSize} total={data.total} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1); }} />
+        ) : null}
       </Card>
 
       {issuing ? (

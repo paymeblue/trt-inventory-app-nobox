@@ -12,7 +12,7 @@ import { Button, buttonClass } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Modal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty";
-import { Pagination } from "@/components/ui/pagination";
+import { DEFAULT_PAGE_SIZE, Pagination, PAGE_SIZES } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { StatCard } from "@/components/stat-card";
@@ -29,7 +29,6 @@ import { apiFetch } from "@/lib/client";
 import { hasLocations, SOURCE_LABELS, SOURCE_PATHS, type Source } from "@/lib/rbac";
 import { cn, qty, relativeTime } from "@/lib/utils";
 
-const PAGE_SIZE = 50;
 
 type Dashboard = {
   total_materials: number; opening_qty: number; available_qty: number; reserved_qty: number; issued_qty: number;
@@ -65,8 +64,9 @@ export function ManageView({ source }: { source: Source }) {
   const search = useSearchParams();
   const label = SOURCE_LABELS[source];
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const { filters, setFilters, params, active } = useFilters();
-  const { data, loading, error, syncedAt, liveAt, changed, reload } = useItems({ ...params, source, page, pageSize: PAGE_SIZE });
+  const { data, loading, error, syncedAt, liveAt, changed, reload } = useItems({ ...params, source, page, pageSize });
 
   const [form, setForm] = React.useState<Form | null>(null);
   const [creating, setCreating] = React.useState(false);
@@ -239,7 +239,7 @@ export function ManageView({ source }: { source: Source }) {
               </tbody>
             </TableWrap>
           )}
-          {data && data.total > PAGE_SIZE ? <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} /> : null}
+          {data && data.total > PAGE_SIZES[0] ? <Pagination page={page} pageSize={pageSize} total={data.total} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1); }} /> : null}
         </Card>
 
         <div className="space-y-3 self-start">
@@ -277,7 +277,7 @@ export function ManageView({ source }: { source: Source }) {
           <Card>
             <CardHeader
               title="Recent changes"
-              description={`Last 25 changes to ${label} stock`}
+              description={`Last 25 changes to ${label} stock: + came in, − went out`}
               action={<Link href="/logs" className="text-[12.5px] font-medium text-accent hover:underline">Stock logs</Link>}
             />
             {!activity ? (
@@ -295,9 +295,12 @@ export function ManageView({ source }: { source: Source }) {
                       </p>
                       {a.note ? <p className="truncate text-[11px] text-fg-muted">{a.note}</p> : null}
                     </div>
-                    <p className={cn("tabular shrink-0 text-[13px] font-semibold", a.delta > 0 ? "text-ok" : a.delta < 0 ? "text-danger" : "text-fg-subtle")}>
-                      {a.delta > 0 ? "+" : ""}{qty(a.delta)}
-                    </p>
+                    <div className="shrink-0 text-right" title={`${a.delta > 0 ? "Added" : "Took out"} ${qty(Math.abs(a.delta))} ${a.unit}; ${qty(a.balance_after)} now in stock`}>
+                      <p className={cn("tabular text-[13px] font-semibold", a.delta > 0 ? "text-ok" : a.delta < 0 ? "text-danger" : "text-fg-subtle")}>
+                        {a.delta > 0 ? "+" : ""}{qty(a.delta)} <span className="text-[11px] font-normal">{a.unit}</span>
+                      </p>
+                      <p className="tabular text-[11px] text-fg-subtle">{qty(a.balance_after)} left</p>
+                    </div>
                   </li>
                 ))}
               </ul>

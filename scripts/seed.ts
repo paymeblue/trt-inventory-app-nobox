@@ -12,14 +12,14 @@ const pool = new Pool({
 });
 
 const USERS = [
-  // email, name, role
+  // email, name, role, company (Designers and Sales)
   ["admin@trtnobox.com", "Chidi Nwosu", "ADMIN"],
   ["factory@trtnobox.com", "Tunde Balogun", "FACTORY_MANAGER"],
   ["nobox@trtnobox.com", "Adaeze Okafor", "NOBOX_MANAGER"],
   ["readycabinets@trtnobox.com", "Ready Cabinets Manager", "READY_CABINETS_MANAGER"],
   ["germana@trtnobox.com", "Germana Manager", "GERMANA_MANAGER"],
   ["design@trtnobox.com", "Zainab Bello", "DESIGNER"],
-  ["sales@trtnobox.com", "Sales", "SALES"],
+  ["sales@trtnobox.com", "Sales", "SALES", "NOBOX"],
 ] as const;
 
 async function seed(client: PoolClient) {
@@ -30,8 +30,10 @@ async function seed(client: PoolClient) {
   }
 
   const password = await bcrypt.hash("trtnobox2026", 10);
-  for (const [email, name, role] of USERS) {
-    await client.query("INSERT INTO users (email, password_hash, full_name, role) VALUES ($1,$2,$3,$4)", [email, password, name, role]);
+  for (const [email, name, role, company] of USERS) {
+    await client.query("INSERT INTO users (email, password_hash, full_name, role, company) VALUES ($1,$2,$3,$4,$5)", [
+      email, password, name, role, company ?? null,
+    ]);
   }
   console.log(`  ${USERS.length} users (password: trtnobox2026)`);
 }

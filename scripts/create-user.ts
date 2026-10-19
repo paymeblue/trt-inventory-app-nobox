@@ -2,6 +2,7 @@ import "./env";
 import bcrypt from "bcryptjs";
 import { Pool } from "pg";
 import { ROLES } from "../src/lib/rbac";
+import { isValidEmail } from "../src/lib/utils";
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -23,6 +24,10 @@ async function main() {
       'Usage: npm run db:user -- <email> <password> "<full name>" [ROLE]\n' +
         `Roles: ${ROLES.join(", ")}`,
     );
+    process.exit(1);
+  }
+  if (!isValidEmail(email.trim().toLowerCase())) {
+    console.error(`"${email}" is not a valid email address.`);
     process.exit(1);
   }
   if (!(ROLES as readonly string[]).includes(role)) {

@@ -13,17 +13,17 @@ import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { SearchInput } from "@/components/search-input";
 import { useRequiredSession } from "@/components/session-context";
-import { ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS, type Role } from "@/lib/rbac";
+import { companyOf, hasCompany, ROLES, ROLE_DESCRIPTIONS, ROLE_LABELS, SOURCE_LABELS, SOURCES, type Role } from "@/lib/rbac";
 import { apiFetch } from "@/lib/client";
 import { initials, relativeTime } from "@/lib/utils";
 
 type Row = {
   id: string; email: string; full_name: string; role: Role; job_title: string | null; phone: string | null;
-  is_active: boolean; last_login_at: string | null; created_at: string;
+  company: string | null; is_active: boolean; last_login_at: string | null; created_at: string;
 };
 
 const EMPTY = {
-  fullName: "", email: "", password: "", role: "DESIGNER" as Role, phone: "", jobTitle: "",
+  fullName: "", email: "", password: "", role: "DESIGNER" as Role, phone: "", jobTitle: "", company: "",
 };
 
 export function UsersView() {
@@ -60,6 +60,7 @@ export function UsersView() {
           role: form.role,
           phone: form.phone || null,
           jobTitle: form.jobTitle,
+          company: form.company || null,
         };
         if (form.password) payload.password = form.password;
         await apiFetch(`/api/users/${editing.id}`, { method: "PATCH", body: JSON.stringify(payload) });
@@ -175,7 +176,10 @@ export function UsersView() {
                   </Td>
                   <Td>
                     <span className="block text-[13px]">{u.job_title ?? ROLE_LABELS[u.role]}</span>
-                    {u.job_title ? <span className="block text-[11.5px] text-fg-subtle">{ROLE_LABELS[u.role]}</span> : null}
+                    <span className="block text-[11.5px] text-fg-subtle">
+                      {[u.job_title ? ROLE_LABELS[u.role] : null, companyOf(u.role, u.company) ? SOURCE_LABELS[companyOf(u.role, u.company)!] : null]
+                        .filter(Boolean).join(" · ")}
+                    </span>
                   </Td>
                   <Td align="right" className="hidden whitespace-nowrap text-[12px] text-fg-subtle md:table-cell">
                     {u.last_login_at ? relativeTime(u.last_login_at) : "never"}
@@ -194,6 +198,7 @@ export function UsersView() {
                             role: u.role,
                             phone: u.phone ?? "",
                             jobTitle: u.job_title ?? "",
+                            company: u.company ?? "",
                           });
                           setError(null);
                           setEditing(u);
@@ -357,7 +362,19 @@ export function UsersView() {
                 ))}
               </Select>
             </Field>
-            <Field label="Phone">
+            {hasCompany(form.role) ? (
+              <Field label="Company" hint={form.role === "SALES" ? "who they sell for" : "optional"}>
+                <Select
+                  required={form.role === "SALES"}
+                  value={form.company}
+                  onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
+                >
+                  <option value="">{form.role === "SALES" ? "Choose a company" : "Any company"}</option>
+                  {SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
+                </Select>
+              </Field>
+            ) : null}
+            <Field label="Phone" className={hasCompany(form.role) ? "sm:col-span-2" : undefined}>
               <Input
                 type="tel"
                 value={form.phone}

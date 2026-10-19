@@ -89,6 +89,16 @@ export function canReserve(role: string | null | undefined): boolean {
   return role === "DESIGNER" || role === "SALES" || role === "ADMIN";
 }
 
+/** Designers and Sales say which company they work for; a manager's company is in their role. */
+export function hasCompany(role: string): boolean {
+  return role === "DESIGNER" || role === "SALES";
+}
+
+/** The company someone works for: chosen for Designers and Sales, implied for managers. */
+export function companyOf(role: string, company: string | null): Source | null {
+  return sideOf(role) ?? (hasCompany(role) && isSource(company) ? company : null);
+}
+
 /** Who a reservation is for: the person responsible is in Design or in Sales. */
 export const RESERVED_FOR = ["DESIGN", "SALES"] as const;
 

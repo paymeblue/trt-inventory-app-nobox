@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/field";
 import { EmptyState } from "@/components/ui/empty";
-import { Pagination } from "@/components/ui/pagination";
+import { DEFAULT_PAGE_SIZE, Pagination, PAGE_SIZES } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { SearchInput, useDebounced } from "@/components/search-input";
 import { LiveIndicator, LocationBadge, SourceBadge } from "@/components/status";
@@ -31,7 +31,6 @@ type Row = {
   related_ref?: string | null; adjustment_type?: string; stock_impact?: number; reserved_impact?: number; issued_impact?: number;
 };
 
-const PAGE_SIZE = 50;
 const signed = (v: number | undefined) => (!v ? "0" : v > 0 ? `+${qty(v)}` : qty(v));
 
 /** The workbook's Stock_Addition_Log and Stock_Adjustment_Log. Issues have their own page, /issuance. */
@@ -42,10 +41,11 @@ export function LogsView() {
   const [source, setSource] = React.useState(home);
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
+  const [pageSize, setPageSize] = React.useState<number>(DEFAULT_PAGE_SIZE);
   const term = useDebounced(search, 300);
   const [data, setData] = React.useState<{ items: Row[]; total: number; quantity: number } | null>(null);
 
-  const qs = toQuery({ source, q: term, page, pageSize: PAGE_SIZE });
+  const qs = toQuery({ source, q: term, page, pageSize });
   const load = React.useCallback(async () => {
     setData(await apiFetch(`/api/logs/${kind}${qs}`));
   }, [kind, qs]);
@@ -161,7 +161,9 @@ export function LogsView() {
             </tbody>
           </TableWrap>
         )}
-        {data && data.total > PAGE_SIZE ? <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onPage={setPage} /> : null}
+        {data && data.total > PAGE_SIZES[0] ? (
+          <Pagination page={page} pageSize={pageSize} total={data.total} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1); }} />
+        ) : null}
       </Card>
     </>
   );

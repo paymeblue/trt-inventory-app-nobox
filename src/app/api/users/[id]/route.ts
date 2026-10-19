@@ -2,7 +2,7 @@ import bcrypt from "bcryptjs";
 import { queryOne, transaction } from "@/lib/db";
 import { requireAdmin } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
-import { isRole } from "@/lib/rbac";
+import { hasCompany, isRole, isSource, SOURCE_LIST } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +26,14 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
     return fail(400, "You cannot remove your own administrator role.");
   }
 
+  // The company follows the role: kept or changed for Designers and Sales, cleared for everyone else.
+  const current = await queryOne<{ role: string; company: string | null }>("SELECT role, company FROM users WHERE id = $1", [id]);
+  if (!current) return fail(404, "User not found.");
+  const role = String(b.role ?? current.role);
+  const company = !hasCompany(role) ? null : "company" in b ? (b.company ? String(b.company) : null) : current.company;
+  if (company !== null && !isSource(company)) return fail(400, `Choose ${SOURCE_LIST}.`);
+  if (role === "SALES" && !company) return fail(400, `Choose the company this sales person works for: ${SOURCE_LIST}.`);
+
   const passwordHash = b.password ? await bcrypt.hash(String(b.password), 10) : null;
 
   const row = await queryOne(
@@ -36,10 +44,11 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
        is_active = COALESCE($4, is_active),
        password_hash = COALESCE($5, password_hash),
        job_title = CASE WHEN $7 THEN NULLIF($8, '') ELSE job_title END,
+       company = $9,
        updated_at = now()
      WHERE id = $6 RETURNING id`,
     [b.fullName ?? null, b.role ?? null, b.phone ?? null, b.isActive ?? null, passwordHash, id,
-     "jobTitle" in b, String(b.jobTitle ?? "").trim()],
+     "jobTitle" in b, String(b.jobTitle ?? "").trim(), company],
   );
   if (!row) return fail(404, "User not found.");
   return ok(row);

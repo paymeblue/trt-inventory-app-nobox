@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { LoginForm } from "./login-form";
-import { Logo } from "@/components/logo";
+import { APP_NAME, Logo, WEBSITE_URL } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme";
 
 export const metadata: Metadata = { title: "Sign in" };
@@ -35,7 +35,7 @@ export default function LoginPage() {
           <div className="w-full max-w-[380px]">
             <h1 className="text-[26px] leading-tight tracking-tight sm:text-[30px]">Sign in</h1>
             <p className="mt-2 text-sm leading-relaxed text-fg-muted">
-              Access the TRT Nobox inventory.
+              Stock across the Factory, Nobox, Ready Cabinets and Germana.
             </p>
 
             <Suspense fallback={<div className="mt-8 h-64 animate-pulse rounded-xl bg-surface-2" />}>
@@ -45,7 +45,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-[12px] text-fg-subtle">
-          TRT Nobox · Inventory
+          <a href={WEBSITE_URL} target="_blank" rel="noreferrer" className="hover:text-fg-muted hover:underline">Ready Cabinets</a> · {APP_NAME}
         </p>
       </div>
 
