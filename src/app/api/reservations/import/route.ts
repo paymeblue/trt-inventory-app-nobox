@@ -3,6 +3,7 @@ import { personOf, requireReserver } from "@/lib/session";
 import { fail, handle, ok } from "@/lib/api";
 import { reservedForOf } from "@/lib/rbac";
 import { importReservations } from "@/lib/reservation-template";
+import { emailPendingEvents } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,5 +22,6 @@ export const POST = handle(async (req: Request) => {
       who: personOf(session), commit: form.get("commit") === "1", reservedFor: reservedForOf(session.role, form.get("reservedFor")),
     }),
   );
+  await emailPendingEvents();
   return ok({ filename: file.name, ...result });
 });

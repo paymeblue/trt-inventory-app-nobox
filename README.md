@@ -52,6 +52,10 @@ accounts, with a valid email; a Sales account must name the company it sells for
 or Germana), a Designer may. Every reservation is marked **Design** or **Sales**, with that company, for the person responsible, in the Reservation Log, the Issuance Log, the Stock Issue form
 and the notifications.
 
+The notification bell is also emailed through SendGrid: each new reservation goes to the inventory team for its
+side and the administrators, and each issue, release or cancellation to the person who reserved. Several updates
+from one action (an Excel import, say) arrive as one email per person.
+
 One deliberate difference: the workbook's formulas move Available_Qty by *twice*
 the quantity for a Return to Stock or an Additional Issue (they count it in both
 Adjustment_Net_Stock and Issued_Qty). Here the goods move once; the three signed
@@ -143,6 +147,10 @@ Open http://localhost:3000.
 |---|---|
 | `DATABASE_URL` | Neon Postgres connection string (`?sslmode=require`). |
 | `JWT_SECRET` | Signing key for the session cookie. Generate with `openssl rand -hex 32`. |
+| `SENDGRID_API_KEY` | Optional. SendGrid key with Mail Send access; without it no email is sent. |
+| `EMAIL_FROM` | The sender address, verified in SendGrid (Single Sender or domain authentication). |
+| `EMAIL_FROM_NAME` | Optional sender name, `Inventory Management` by default. |
+| `APP_URL` | Optional link used in emails. Netlify's own `URL` is used when it is not set. |
 
 ### Scripts
 

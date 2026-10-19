@@ -3,6 +3,7 @@ import { HttpError, personOf, requireSession } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
 import { canManage } from "@/lib/rbac";
 import { findReservation, issueReservation, releaseReservation } from "@/lib/reservations";
+import { emailPendingEvents } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,5 +40,6 @@ export const POST = handle(async (req: Request, ctx: Ctx) => {
     }
     throw new HttpError(400, "Choose issue or cancel.");
   });
+  await emailPendingEvents();
   return ok(result);
 });

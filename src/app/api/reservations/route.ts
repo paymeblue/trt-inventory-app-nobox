@@ -3,6 +3,7 @@ import { personOf, requireReserver, requireSession } from "@/lib/session";
 import { handle, ok, readJson } from "@/lib/api";
 import { isSource, reservedForOf } from "@/lib/rbac";
 import { createReservation, RESERVATION_COLUMNS, RESERVATION_FROM } from "@/lib/reservations";
+import { emailPendingEvents } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -69,5 +70,6 @@ export const POST = handle(async (req: Request) => {
       personOf(session),
     ),
   );
+  await emailPendingEvents();
   return ok(created, { status: 201 });
 });

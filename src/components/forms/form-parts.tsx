@@ -17,7 +17,7 @@ function describeItem(item: Item) {
 /** The workbook's Reorder_Status, with its four values. */
 export function ReorderBadge({ status }: { status: string }) {
   const tone = status === "OUT OF STOCK" ? "danger" : status === "REORDER NOW" ? "warn" : status === "LOW" ? "info" : "ok";
-  return <Badge tone={tone} dot>{status}</Badge>;
+  return <Badge tone={tone} dot>{status === "OK" ? "Available" : status}</Badge>;
 }
 
 /**

@@ -3,6 +3,7 @@ import { personOf, requireManager } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
 import type { Source } from "@/lib/rbac";
 import { issueReservation } from "@/lib/reservations";
+import { emailPendingEvents } from "@/lib/email";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,5 +22,6 @@ export const POST = handle(async (req: Request) => {
   const result = await transaction((client) =>
     issueReservation(client, body.reservationId!, personOf(session), { quantity: Number(body.quantity), notes: body.notes }),
   );
+  await emailPendingEvents();
   return ok(result, { status: 201 });
 });

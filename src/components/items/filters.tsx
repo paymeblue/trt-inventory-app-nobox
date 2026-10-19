@@ -66,7 +66,7 @@ export function ItemFilters({
         </Select>
         <Select value={filters.status} onChange={set("status")} aria-label="Stock status" className="lg:w-40">
           <option value="">Any status</option>
-          <option value="ok">OK</option>
+          <option value="ok">Available</option>
           <option value="low">LOW</option>
           <option value="reorder">REORDER NOW</option>
           <option value="out">OUT OF STOCK</option>

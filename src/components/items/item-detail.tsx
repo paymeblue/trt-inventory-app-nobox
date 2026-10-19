@@ -1,6 +1,8 @@
 "use client";
 
-import { Bookmark } from "lucide-react";
+import * as React from "react";
+import { createPortal } from "react-dom";
+import { Bookmark, Maximize2, X } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { ProductImage } from "@/components/product-image";
@@ -13,6 +15,7 @@ import type { Item } from "./use-items";
 
 export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: () => void; onReserve?: () => void }) {
   const session = useSession();
+  const [zoomed, setZoomed] = React.useState(false);
   const reservations = useOpenReservations(item.id, Boolean(session) && item.reserved > 0);
   const rows: [string, string | null][] = [
     ["Material Code", item.sku],
@@ -30,7 +33,7 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
       open
       onClose={onClose}
       title={item.name}
-      size="lg"
+      size="xl"
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>Close</Button>
@@ -42,8 +45,26 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
         </>
       }
     >
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-[240px_1fr]">
-        <ProductImage imageId={item.image_id} name={item.name} className="aspect-[4/3] w-full rounded-xl" />
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+        {item.image_id ? (
+          <button
+            type="button"
+            onClick={() => setZoomed(true)}
+            className="group relative block w-full cursor-zoom-in"
+            aria-label="View photo full size"
+          >
+            <ProductImage
+              imageId={item.image_id}
+              name={item.name}
+              className="h-[min(56dvh,460px)] w-full rounded-xl object-contain"
+            />
+            <span className="absolute bottom-2.5 right-2.5 flex items-center gap-1.5 rounded-lg bg-black/60 px-2 py-1 text-[11.5px] font-medium text-white opacity-80 transition-opacity group-hover:opacity-100">
+              <Maximize2 className="h-3.5 w-3.5" /> Full size
+            </span>
+          </button>
+        ) : (
+          <ProductImage name={item.name} className="aspect-[4/3] w-full rounded-xl" />
+        )}
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <SourceBadge source={item.source} />
@@ -100,6 +121,36 @@ export function ItemDetail({ item, onClose, onReserve }: { item: Item; onClose: 
           {item.description}
         </p>
       ) : null}
+      {zoomed && item.image_id ? <PhotoViewer imageId={item.image_id} name={item.name} onClose={() => setZoomed(false)} /> : null}
     </Modal>
+  );
+}
+
+/** The photo at its full resolution, filling the screen. */
+function PhotoViewer({ imageId, name, onClose }: { imageId: string; name: string; onClose: () => void }) {
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[60] flex animate-fade-in items-center justify-center bg-black/90 p-4 sm:p-8" onClick={onClose}>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={`/api/images/${imageId}`} alt={name} className="max-h-full max-w-full rounded-lg object-contain" />
+      <button
+        onClick={onClose}
+        className="absolute right-4 top-4 rounded-lg bg-white/10 p-2 text-white transition-colors hover:bg-white/20"
+        aria-label="Close photo"
+      >
+        <X className="h-5 w-5" />
+      </button>
+    </div>,
+    document.body,
   );
 }
