@@ -2,6 +2,7 @@ import type { PoolClient } from "pg";
 import { HttpError } from "./session";
 import { slugToSku } from "./utils";
 import type { Location, Source } from "./rbac";
+import { recalculateReorder } from "./reorder";
 import { parseTemplate, placeLabel, type TemplateError, type TemplateRow } from "./template";
 
 export type MovementKind = "CREATE" | "ADJUST" | "IMPORT" | "ISSUE" | "ADDITION" | "OPENING";
@@ -56,6 +57,7 @@ export const ITEM_COLUMNS = `
   i.opening_qty::float8 AS opening_qty,
   i.quantity::float8 AS quantity, i.reorder_level::float8 AS reorder_level,
   i.reorder_quantity::float8 AS reorder_quantity, i.bad_qty::float8 AS bad_qty,
+  i.reorder_level_manual, i.reorder_quantity_manual, i.lead_time_days::float8 AS lead_time_days,
   (${RESERVED_SQL})::float8 AS reserved,
   (${AVAILABLE_SQL})::float8 AS available,
   (${ISSUED_SQL})::float8 AS issued,
@@ -127,6 +129,10 @@ type Target = {
   /** The row of this file that already wrote to it. */
   usedBy: number | null;
 };
+
+/** A Reorder_Level, Reorder_Quantity or Lead_Time_Days cell: blank (null), "auto", or a number. */
+const cellNumber = (v: number | "auto" | null) => (typeof v === "number" ? v : null);
+const cellText = (v: number | "auto" | null) => (v === null ? null : String(v));
 
 const same = (a: string | null, b: string | null) => (a ?? "").toLowerCase() === (b ?? "").toLowerCase();
 
@@ -275,10 +281,12 @@ export async function applyImport(
     if (create) {
       const { rows: made } = await client.query<{ id: string }>(
         `INSERT INTO items (source, location, sku, name, category, subcategory, spec, dimensions, unit, opening_qty, quantity,
-                            reorder_level, reorder_quantity, description, created_by, updated_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$14) RETURNING id`,
+                            reorder_level, reorder_quantity, description, created_by, updated_by,
+                            reorder_level_manual, reorder_quantity_manual, lead_time_days)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$14,$15,$16,$17) RETURNING id`,
         [source, location, t.sku, r.name, category, r.subcategory, r.spec, r.dimensions, r.unit ?? "Unit", quantity,
-         r.reorderLevel ?? 0, r.reorderQuantity ?? 0, r.notes, opts.userId],
+         cellNumber(r.reorderLevel) ?? 0, cellNumber(r.reorderQuantity) ?? 0, r.notes, opts.userId,
+         cellNumber(r.reorderLevel) !== null, cellNumber(r.reorderQuantity) !== null, cellNumber(r.leadTimeDays)],
       );
       await recordMovement(client, {
         itemId: made[0].id, source, kind: "OPENING", delta: quantity, balance: quantity, note, userId: opts.userId,
@@ -301,10 +309,13 @@ export async function applyImport(
          description = COALESCE($9, description),
          quantity = $10,
          updated_by = $11,
-         updated_at = now()
+         updated_at = now(),
+         reorder_level_manual = CASE WHEN $13::text IS NULL THEN reorder_level_manual ELSE $13 <> 'auto' END,
+         reorder_quantity_manual = CASE WHEN $14::text IS NULL THEN reorder_quantity_manual ELSE $14 <> 'auto' END,
+         lead_time_days = CASE WHEN $15::text IS NULL THEN lead_time_days WHEN $15 = 'auto' THEN NULL ELSE $15::numeric END
        WHERE id = $12`,
-      [r.name, category, r.subcategory, r.spec, r.dimensions, r.unit, r.reorderLevel, r.reorderQuantity,
-       r.notes, after, opts.userId, t.id],
+      [r.name, category, r.subcategory, r.spec, r.dimensions, r.unit, cellNumber(r.reorderLevel), cellNumber(r.reorderQuantity),
+       r.notes, after, opts.userId, t.id, cellText(r.reorderLevel), cellText(r.reorderQuantity), cellText(r.leadTimeDays)],
     );
     if (quantity > 0) {
       const { rows: add } = await client.query<{ ref: string }>(
@@ -332,11 +343,19 @@ type ItemFields = {
   dimensions: string | null;
   colour: string | null;
   unit: string | null;
-  reorderLevel: number | null;
-  reorderQuantity: number | null;
+  /** Absent: leave alone. Null: work it out from usage. A number: set by hand. */
+  reorderLevel: number | null | undefined;
+  reorderQuantity: number | null | undefined;
+  /** Absent: leave alone. Null: the side's default. */
+  leadTimeDays: number | null | undefined;
   description: string | null;
   imageId: string | null;
 };
+
+function leadTime(days: number | null | undefined) {
+  if (days === 0) throw new HttpError(400, "Lead time must be more than 0 days.");
+  return days;
+}
 
 /**
  * Reads the editable fields from a create or update request. On update, a key
@@ -355,6 +374,8 @@ export function parseItemBody(body: Record<string, unknown>, opts: { creating: b
     if (!Number.isFinite(n) || n < 0) throw new HttpError(400, `${label} must be 0 or more.`);
     return n;
   };
+  // A blank value is meaningful here, so absent and blank are told apart.
+  const override = (key: string, label: string) => (key in body ? num(key, label) : undefined);
 
   const sku = str("sku")?.toUpperCase() ?? null;
   const name = str("name");
@@ -373,8 +394,9 @@ export function parseItemBody(body: Record<string, unknown>, opts: { creating: b
     dimensions: str("dimensions"),
     colour: str("colour"),
     unit: str("unit") || null,
-    reorderLevel: num("reorderLevel", "Reorder Level"),
-    reorderQuantity: num("reorderQuantity", "Reorder Quantity"),
+    reorderLevel: override("reorderLevel", "Reorder Level"),
+    reorderQuantity: override("reorderQuantity", "Reorder Quantity"),
+    leadTimeDays: leadTime(override("leadTimeDays", "Lead time")),
     description: str("description"),
     imageId: str("imageId") || null,
   };
@@ -398,6 +420,7 @@ export async function importStock(
   // manager sees every problem in the file in one pass.
   const apply = opts.commit && parsed.errors.length === 0;
   const result = await applyImport(client, source, parsed.rows, { ...opts, dryRun: !apply });
+  if (apply && !result.errors.length) await recalculateReorder(client, { source });
   const errors = [...parsed.errors, ...result.errors].sort((a, b) => (a.row ?? 0) - (b.row ?? 0));
   return { applied: apply && errors.length === 0, changes: errors.length ? [] : result.changes, errors };
 }

@@ -1,6 +1,7 @@
 import type { PoolClient } from "pg";
 import { HttpError } from "./session";
 import { reactivateCategoryOf, recordMovement } from "./items";
+import { recalculateReorder } from "./reorder";
 import { lockItem, releaseReservation, resolveReservationRef, type Person } from "./reservations";
 
 /**
@@ -150,5 +151,6 @@ export async function adjustStock(
     [item.id, item.source, type, quantity, impacts.stock, impacts.reserved, impacts.issued, badChange(type, quantity),
      relatedRef, reservationId, input.notes?.trim() || null, who.id, who.name],
   );
+  if (impacts.issued) await recalculateReorder(client, { itemId: item.id });
   return { ref: rows[0].ref, type, impacts, source: item.source };
 }

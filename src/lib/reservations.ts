@@ -1,7 +1,8 @@
 import type { PoolClient } from "pg";
 import { HttpError } from "./session";
-import type { Source } from "./rbac";
+import type { ReservedFor, Source } from "./rbac";
 import { recordMovement, RESERVED_SQL } from "./items";
+import { recalculateReorder } from "./reorder";
 
 /**
  * Reservation_Log columns. A reservation's balance is what is still set aside:
@@ -12,7 +13,7 @@ export const RESERVATION_COLUMNS = `
   r.issued_qty::float8 AS issued_qty, r.released_qty::float8 AS released_qty,
   GREATEST(r.quantity - r.issued_qty - r.released_qty, 0)::float8 AS balance,
   r.project, r.notes, r.status, r.legacy_status, r.available_at_request::float8 AS available_at_request,
-  r.created_at, r.closed_at, r.reserved_by,
+  r.created_at, r.closed_at, r.reserved_by, r.reserved_for,
   COALESCE(ru.full_name, r.designer_name) AS reserved_by_name,
   COALESCE(ru.email, r.designer_email) AS reserved_by_email,
   ru.job_title AS reserved_by_title,
@@ -59,7 +60,9 @@ async function logEvent(
   );
 }
 
-export type ReservationInput = { itemId: string; quantity: number; project: string; notes?: string | null };
+export type ReservationInput = {
+  itemId: string; quantity: number; project: string; notes?: string | null; reservedFor: ReservedFor;
+};
 
 /**
  * Reservation_Form. Status Check, as the workbook words it: "Missing required
@@ -73,7 +76,7 @@ export async function createReservation(client: PoolClient, input: ReservationIn
 
   const item = await lockItem(client, input.itemId);
   const available = item.quantity - item.reserved;
-  // Say what is held and why, so the designer is not left guessing.
+  // Say what is held and why, so whoever is reserving is not left guessing.
   const held = item.reserved > 0 ? `${item.reserved} ${item.unit} already reserved, so ` : "";
   if (available <= 0) {
     throw new HttpError(400, `OUT OF STOCK: ${held}none of the ${item.quantity} ${item.unit} of ${item.sku} | ${item.name} are available.`);
@@ -83,9 +86,10 @@ export async function createReservation(client: PoolClient, input: ReservationIn
   }
 
   const { rows } = await client.query<{ id: string; ref: string }>(
-    `INSERT INTO reservations (item_id, source, quantity, project, notes, reserved_by, designer_name, designer_email, available_at_request)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, ref`,
-    [item.id, item.source, quantity, project, input.notes?.trim() || null, who.id, who.name, who.email, available],
+    `INSERT INTO reservations (item_id, source, quantity, project, notes, reserved_by, designer_name, designer_email,
+                               available_at_request, reserved_for)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, ref`,
+    [item.id, item.source, quantity, project, input.notes?.trim() || null, who.id, who.name, who.email, available, input.reservedFor],
   );
   await logEvent(client, rows[0].id, "RESERVED", who.id, quantity, input.notes);
   return rows[0];
@@ -173,6 +177,7 @@ export async function issueReservation(
     note: `${rows[0].ref} against ${r.ref}${input.notes ? ` · ${input.notes}` : ""}`, userId: who.id,
   });
   await logEvent(client, r.id, "ISSUED", who.id, quantity, input.notes);
+  await recalculateReorder(client, { itemId: item.id });
   return { ref: r.ref, issueRef: rows[0].ref, quantity, stockLeft: balanceAfter, balance: settled.balance, status: settled.status };
 }
 

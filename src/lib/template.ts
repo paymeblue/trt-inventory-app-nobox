@@ -13,7 +13,7 @@ type Column = { key: TemplateKey; header: string; width: number; rule: string; a
 export type TemplateKey =
   | "sku" | "name" | "category" | "subcategory" | "spec" | "dimensions" | "unit"
   | "quantity" | "quantityLagos" | "quantityAbuja"
-  | "reorderLevel" | "reorderQuantity" | "supplierRef" | "documentRef" | "notes";
+  | "reorderLevel" | "reorderQuantity" | "leadTimeDays" | "supplierRef" | "documentRef" | "notes";
 
 const QUANTITY_RULE =
   "Optional, 0 or more. For a new material it is the Opening_Qty; for an existing one it is posted as a Stock Addition. To remove stock use the Stock Adjustment form.";
@@ -41,9 +41,11 @@ const ALL_COLUMNS: Column[] = [
     aliases: ["quantityaddedabuja", "quantityaddedabj", "quantityabuja", "quantityabj", "qtyabuja", "qtyabj", "abuja", "abj"],
     rule: `${QUANTITY_RULE} Goes to the Abuja store.` },
   { key: "reorderLevel", header: "Reorder_Level", width: 14, aliases: ["reorderlevel", "reorderpoint", "minlevel"],
-    rule: "Optional. REORDER NOW when available is at or below this; LOW up to 1.25× it." },
+    rule: "Optional. REORDER NOW when available is at or below this; LOW up to 1.25× it. Worked out automatically from the material's usage unless a number is given here; AUTO goes back to the automatic value. Blank keeps the current setting." },
   { key: "reorderQuantity", header: "Reorder_Quantity", width: 16, aliases: ["reorderquantity", "reorderqty"],
-    rule: "Optional. How many to reorder." },
+    rule: "Optional. How many to reorder. Worked out automatically (enough for the side's days of cover) unless a number is given here; AUTO goes back to the automatic value. Blank keeps the current setting." },
+  { key: "leadTimeDays", header: "Lead_Time_Days", width: 15, aliases: ["leadtimedays", "leadtime", "leadtimeindays"],
+    rule: "Optional. Days from placing an order to the stock arriving, used to work out the Reorder_Level. AUTO uses the side's default. Blank keeps the current setting." },
   { key: "supplierRef", header: "Supplier_or_Reference", width: 22, aliases: ["supplierorreference", "supplier", "supplierref", "reference"],
     rule: "Optional. Recorded on the Stock Addition." },
   { key: "documentRef", header: "Document_Ref", width: 14, aliases: ["documentref", "docref", "document", "invoice"],
@@ -79,8 +81,10 @@ export type TemplateRow = {
   unit: string | null;
   /** Null quantity means the cell was blank. */
   quantities: RowQuantity[];
-  reorderLevel: number | null;
-  reorderQuantity: number | null;
+  /** A number set by hand, "auto" to go back to the calculated value, or null for blank. */
+  reorderLevel: number | "auto" | null;
+  reorderQuantity: number | "auto" | null;
+  leadTimeDays: number | "auto" | null;
   supplierRef: string | null;
   documentRef: string | null;
   notes: string | null;
@@ -91,13 +95,15 @@ export type TemplateError = { row: number | null; column: string | null; message
 /** A material as the filled-in template lists it. */
 export type TemplateMaterial = {
   sku: string; name: string; category: string | null; subcategory: string | null; spec: string | null;
-  dimensions: string | null; unit: string; reorder_level: number; reorder_quantity: number; description: string | null;
+  dimensions: string | null; unit: string; description: string | null;
+  /** Only values set by hand; calculated ones are left blank so a re-upload does not pin them. */
+  reorder_level: number | null; reorder_quantity: number | null; lead_time_days: number | null;
 };
 
 const EXAMPLES: Partial<Record<TemplateKey, string | number>>[] = [
   { sku: "SV13", name: "PANT RACK", category: "WARDROBE ACCESSORIES", subcategory: "TROUSER HANGER", dimensions: "406*430*115", unit: "CARTON",
-    quantity: 33, quantityLagos: 33, quantityAbuja: 10, reorderLevel: 5, reorderQuantity: 20, supplierRef: "Supplier name", documentRef: "INV-0001" },
-  { sku: "YXJ-0042", name: "MATT GOLD", category: "HANDLE", spec: "", dimensions: "1 METRE", unit: "PCS", quantity: 179, quantityLagos: 179 },
+    quantity: 33, quantityLagos: 33, quantityAbuja: 10, reorderLevel: 5, reorderQuantity: 20, leadTimeDays: 21, supplierRef: "Supplier name", documentRef: "INV-0001" },
+  { sku: "YXJ-0042", name: "MATT GOLD", category: "HANDLE", spec: "", dimensions: "1 METRE", unit: "PCS", quantity: 179, quantityLagos: 179, reorderLevel: "AUTO" },
   { sku: "YXJ-0042", name: "MATT GOLD", category: "HANDLE", dimensions: "25CM", unit: "PCS", quantity: 885, quantityLagos: 885, quantityAbuja: "" },
 ];
 
@@ -113,7 +119,8 @@ export function buildTemplate(source: Source, materials: TemplateMaterial[] = []
   const valueOf = (m: TemplateMaterial, key: TemplateKey): string | number => {
     const v = {
       sku: m.sku, name: m.name, category: m.category, subcategory: m.subcategory, spec: m.spec, dimensions: m.dimensions,
-      unit: m.unit, reorderLevel: m.reorder_level || "", reorderQuantity: m.reorder_quantity || "", notes: m.description,
+      unit: m.unit, reorderLevel: m.reorder_level, reorderQuantity: m.reorder_quantity, leadTimeDays: m.lead_time_days,
+      notes: m.description,
     }[key as string];
     return v ?? "";
   };
@@ -262,8 +269,11 @@ export function parseTemplate(
     const quantities: RowQuantity[] = hasLocations(source)
       ? (Object.keys(LOCATION_COLUMNS) as Location[]).map((location) => ({ location, quantity: optionalNumber(LOCATION_COLUMNS[location]) }))
       : [{ location: null, quantity: optionalNumber("quantity") }];
-    const reorderLevel = optionalNumber("reorderLevel");
-    const reorderQuantity = optionalNumber("reorderQuantity");
+    const orAuto = (key: TemplateKey) => (text(cell(key)).toLowerCase() === "auto" ? "auto" : optionalNumber(key));
+    const reorderLevel = orAuto("reorderLevel");
+    const reorderQuantity = orAuto("reorderQuantity");
+    const leadTimeDays = orAuto("leadTimeDays");
+    if (leadTimeDays === 0) fail("leadTimeDays", "Lead_Time_Days must be more than 0, or AUTO for the side's default.");
 
     if (errors.length > errorsBefore) continue;
     const opt = (k: TemplateKey) => text(cell(k)) || null;
@@ -279,6 +289,7 @@ export function parseTemplate(
       quantities,
       reorderLevel,
       reorderQuantity,
+      leadTimeDays,
       supplierRef: opt("supplierRef"),
       documentRef: opt("documentRef"),
       notes: opt("notes"),

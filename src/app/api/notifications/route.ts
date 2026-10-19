@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * What each person needs to know, from the reservation log:
  * - the inventory team: every new reservation on their side;
- * - designers: when their reservations are issued to production or released.
+ * - designers and sales: when their reservations are issued to production or released.
  * Anything newer than when they last opened the list is unread.
  */
 export const GET = handle(async () => {
@@ -17,7 +17,7 @@ export const GET = handle(async () => {
   const sides = SOURCES.filter((s) => canManage(session.role, s));
   const items = await query(
     `SELECT e.id, e.action, e.created_at, e.note, COALESCE(e.quantity, r.quantity)::float8 AS quantity,
-            r.id AS reservation_id, r.ref, r.project, r.source, i.sku, i.name AS item_name, i.unit,
+            r.id AS reservation_id, r.ref, r.project, r.source, r.reserved_for, i.sku, i.name AS item_name, i.unit,
             COALESCE(u.full_name, r.designer_name) AS by_name,
             e.created_at > (SELECT notifications_seen_at FROM users WHERE id = $1) AS unread
        FROM reservation_events e

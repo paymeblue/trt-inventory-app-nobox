@@ -18,7 +18,8 @@ export const GET = handle(async () => {
        (SELECT extract(epoch FROM max(updated_at)) FROM categories),
        (SELECT extract(epoch FROM max(created_at)) FROM item_movements),
        (SELECT extract(epoch FROM max(created_at)) FROM reservation_events),
-       (SELECT extract(epoch FROM max(created_at)) FROM stock_adjustments)
+       (SELECT extract(epoch FROM max(created_at)) FROM stock_adjustments),
+       (SELECT extract(epoch FROM max(reorder_calculated_at)) FROM side_settings)
      ) AS v`,
   );
   return ok({ version: row?.v ?? "", now: new Date().toISOString() });

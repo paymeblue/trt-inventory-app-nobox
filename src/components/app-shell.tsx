@@ -95,7 +95,7 @@ function SignInBlock() {
       >
         <LogIn className="h-4 w-4" /> Sign in
       </Link>
-      <p className="mt-2 px-1 text-center text-[11.5px] text-fg-subtle">Designers sign in to reserve items</p>
+      <p className="mt-2 px-1 text-center text-[11.5px] text-fg-subtle">Designers and sales sign in to reserve items</p>
     </div>
   );
 }

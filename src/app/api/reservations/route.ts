@@ -1,7 +1,7 @@
 import { query, transaction } from "@/lib/db";
 import { personOf, requireReserver, requireSession } from "@/lib/session";
 import { handle, ok, readJson } from "@/lib/api";
-import { isSource } from "@/lib/rbac";
+import { isSource, reservedForOf } from "@/lib/rbac";
 import { createReservation, RESERVATION_COLUMNS, RESERVATION_FROM } from "@/lib/reservations";
 
 export const runtime = "nodejs";
@@ -32,7 +32,7 @@ export const GET = handle(async (req: Request) => {
     add(
       (n) => `(lower(r.ref) LIKE $${n} OR lower(r.project) LIKE $${n} OR lower(i.name) LIKE $${n}
                OR lower(i.sku) LIKE $${n} OR lower(coalesce(ru.full_name, r.designer_name, '')) LIKE $${n}
-               OR lower(coalesce(r.designer_email,'')) LIKE $${n})`,
+               OR lower(coalesce(r.designer_email,'')) LIKE $${n} OR lower(coalesce(r.reserved_for,'')) LIKE $${n})`,
       `%${q.toLowerCase()}%`,
     );
   }
@@ -58,11 +58,14 @@ export const GET = handle(async (req: Request) => {
 
 export const POST = handle(async (req: Request) => {
   const session = await requireReserver();
-  const body = await readJson<{ itemId?: string; quantity?: number; project?: string; notes?: string }>(req);
+  const body = await readJson<{ itemId?: string; quantity?: number; project?: string; notes?: string; reservedFor?: string }>(req);
   const created = await transaction((client) =>
     createReservation(
       client,
-      { itemId: String(body.itemId ?? ""), quantity: Number(body.quantity), project: String(body.project ?? ""), notes: body.notes },
+      {
+        itemId: String(body.itemId ?? ""), quantity: Number(body.quantity), project: String(body.project ?? ""), notes: body.notes,
+        reservedFor: reservedForOf(session.role, body.reservedFor),
+      },
       personOf(session),
     ),
   );

@@ -233,7 +233,7 @@ export function UsersView() {
       <Card className="mt-3 p-4 sm:p-5">
         <h2 className="text-sm font-semibold tracking-tight">What each role can do</h2>
         <p className="mt-0.5 text-[13px] text-fg-muted">
-          Managers can only change their own side. Designers can see everything but change nothing.
+          Managers can only change their own side. Designers and Sales can see everything and reserve stock, but change nothing.
         </p>
         <div className="mt-4 grid grid-cols-1 gap-2.5 sm:grid-cols-2 xl:grid-cols-4">
           {ROLES.map((role) => (
@@ -312,7 +312,7 @@ export function UsersView() {
               placeholder="CEO"
             />
             <datalist id="job-titles">
-              {["CEO", "COO", "CFO", "Head of Design", "Designer", "Factory Manager", "Nobox Manager", "Ready Cabinets Manager", "Germana Manager", "Storekeeper", "Inventory Officer", "Procurement"].map((t) => (
+              {["CEO", "COO", "CFO", "Head of Design", "Designer", "Sales Executive", "Sales Manager", "Factory Manager", "Nobox Manager", "Ready Cabinets Manager", "Germana Manager", "Storekeeper", "Inventory Officer", "Procurement"].map((t) => (
                 <option key={t} value={t} />
               ))}
             </datalist>

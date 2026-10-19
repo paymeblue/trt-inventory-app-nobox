@@ -1,8 +1,9 @@
-import { query } from "@/lib/db";
+import { query, transaction } from "@/lib/db";
 import { requireSession } from "@/lib/session";
 import { handle, ok } from "@/lib/api";
 import { isSource } from "@/lib/rbac";
 import { ACTIVE_SQL, AVAILABLE_SQL, ISSUED_SQL, RESERVED_SQL, STATUS_SQL } from "@/lib/items";
+import { refreshReorderIfStale } from "@/lib/reorder";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export const GET = handle(async (req: Request) => {
   // Archived categories are left out of every figure.
   const scope = `WHERE ${ACTIVE_SQL}${isSource(source) ? " AND i.source = $1" : ""}`;
   const params = isSource(source) ? [source] : [];
+  await transaction(refreshReorderIfStale);
 
   const [totals, reorder] = await Promise.all([
     query(
@@ -35,7 +37,8 @@ export const GET = handle(async (req: Request) => {
     query(
       `SELECT * FROM (
          SELECT i.id, i.source, i.sku, i.name, i.category, i.unit, i.reorder_level::float8 AS reorder_level,
-                i.reorder_quantity::float8 AS reorder_quantity, (${AVAILABLE_SQL})::float8 AS available,
+                i.reorder_quantity::float8 AS reorder_quantity, i.reorder_level_manual, i.reorder_quantity_manual,
+                (${AVAILABLE_SQL})::float8 AS available,
                 ${STATUS_SQL} AS reorder_status
            FROM items i ${scope}) x
         WHERE x.reorder_status IN ('REORDER NOW','OUT OF STOCK')

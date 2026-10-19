@@ -1,7 +1,7 @@
 # TRT Nobox — Inventory
 
 One place to see everything held in the TRT Factory and at Nobox. Designers
-browse it and reserve stock for their projects; the Factory and Nobox managers
+and the sales teams browse it and reserve stock for their projects and orders; the Factory and Nobox managers
 keep it up to date and issue reservations when the items leave the store.
 
 ## What it does
@@ -13,7 +13,7 @@ same lookups, the same "Status Check" messages and the same Reorder_Status rule.
 | Screen | Who | Workbook equivalent |
 |---|---|---|
 | **Inventory** (`/inventory`) | Anyone, no sign-in | Inventory_Master, read-only: every material by **Material_Code \| Name**, labelled Factory or Nobox, with Available_Qty and Reorder_Status. Live (checks every 3 s). |
-| **Reservation Form** (Inventory → New reservation / Reserve) | Designers | Reservation_Form: Designer Name + Email (from the account), Project Name, Material (Code \| Name), Quantity Requested, Purpose / Notes; lookups Code, Name, Category, Specification, Dimensions, Unit, Available Qty; Status Check "Missing required fields" / "OUT OF STOCK" / "Insufficient available quantity". Also **Reserve from Excel**. Signed-out visitors are asked to sign in and brought back. |
+| **Reservation Form** (Inventory → New reservation / Reserve) | Designers, Sales | Reservation_Form: Reserved By + Email (from the account), For (Design or Sales, from the role; an administrator picks), Project Name, Material (Code \| Name), Quantity Requested, Purpose / Notes; lookups Code, Name, Category, Specification, Dimensions, Unit, Available Qty; Status Check "Missing required fields" / "OUT OF STOCK" / "Insufficient available quantity". Also **Reserve from Excel**. Signed-out visitors are asked to sign in and brought back. |
 | **Reservation Log** (`/reservations`) | Signed in | Reservation_Log: ID, timestamp, designer, project, material, reserved, issued, balance, status (Reserved, Part issued, Issued, Released). |
 | **Stock Issue Form** | Each side's team | Stock_Issue_Form: Reservation ID, Quantity To Issue (part or all), Notes; lookups Project, Material, Reserved Qty, Already Issued, Balance To Issue, Available Inventory; "Issue exceeds remaining reservation balance". The stock must physically be there. Only issuing deducts reserved stock. |
 | **Stock Addition Form** | Each side's team | Stock_Addition_Form: Material, Quantity Added, Supplier / Reference, Document Ref, Notes. |
@@ -31,6 +31,25 @@ same lookups, the same "Status Check" messages and the same Reorder_Status rule.
 - **Available_Qty** = In stock − Reserved.
 - **Reorder_Status**: OUT OF STOCK at 0 or below; REORDER NOW at or below Reorder_Level;
   LOW at or below 1.25 × Reorder_Level; otherwise OK. **Low Stock SKUs** counts all three.
+
+### Reorder_Level and Reorder_Quantity are worked out automatically
+
+From what each material uses: its issues over the last 90 days (at least 7 for a new material), less any
+Return to Stock (`src/lib/reorder.ts`).
+
+- **Reorder_Level** = daily usage × lead time + 1.65 × σ(daily usage) × √lead time (lead-time demand plus safety stock).
+- **Reorder_Quantity** = daily usage × days of cover.
+
+Each side has a default lead time (14 days) and days of cover (30), under **Settings** on the dashboard's Reorder
+alert; a material may have its own lead time. A value typed on the material, or given in the upload, is kept until
+it is cleared (blank in the app, `AUTO` in Excel). The figures are worked out again whenever stock is issued or
+returned, and at least hourly. A material nothing has been issued from has a Reorder_Level of 0.
+
+### Design and Sales
+
+Designers and the sales teams (the **Sales** role) reserve stock the same way. Every reservation is marked
+**Design** or **Sales** for the person responsible, in the Reservation Log, the Issuance Log, the Stock Issue form
+and the notifications.
 
 One deliberate difference: the workbook's formulas move Available_Qty by *twice*
 the quantity for a Return to Stock or an Additional Issue (they count it in both
@@ -58,7 +77,7 @@ Both are all-or-nothing and list every problem by row and column.
 - **Stock** (`/api/items/template?source=NOBOX`, one per side; **Template** on each dashboard), on
   Inventory_Master's names: `Material_Code` · `Material_Name` · `Category` · `Subcategory` · `Specification` ·
   `Dimensions (W*D*H)MM` · `Unit` · `Quantity_Added` · `Reorder_Level` · `Reorder_Quantity` ·
-  `Supplier_or_Reference` · `Document_Ref` · `Notes`. On Nobox, `Quantity_Added` is two columns,
+  `Lead_Time_Days` · `Supplier_or_Reference` · `Document_Ref` · `Notes`. On Nobox, `Quantity_Added` is two columns,
   `Quantity_Added (Lagos)` and `Quantity_Added (Abuja)`, each applied to its own store; a new material with
   both blank is created in Lagos.
   - Columns are matched by header, in any order; common spellings such as `Quantity_Added (lag)` or
@@ -70,7 +89,8 @@ Both are all-or-nothing and list every problem by row and column.
     1 METRE, MATT GOLD 25CM…): the row's name, subcategory, specification and dimensions pick the one it means.
   - A repeated row with no quantity is ignored; a repeated row with a quantity is an error.
   - **Export** (`&filled=1`) downloads the template filled with the side's current materials, quantities blank,
-    to edit and upload again.
+    to edit and upload again. Reorder figures appear only where they were set by hand, so a re-upload never pins
+    a calculated one.
 - **Reservations** (`/api/reservations/template`): `Material_Code` · `Material_Name` · `From` · `Location` ·
   `Quantity_Requested` · `Project_Name` · `Purpose_Notes`. Material_Name is needed only when a code is shared;
   Location (Lagos or Abuja) only when a Nobox material is held in both.
@@ -136,7 +156,7 @@ Open http://localhost:3000.
 | `npm run db:reset` | **Drops the public schema.** Follow with `db:migrate` |
 | `npm run db:import-stock -- "<file.xlsx>" <SIDE> <email> [--commit]` | Upload a stock workbook as that account (see above) |
 | `npm run db:clear-data -- --confirm` | Empty the inventory on every side and keep the accounts (see above) |
-| `npm run db:user -- <email> <password> "<name>" [ROLE]` | Create or update one account. `ROLE` is `ADMIN`, `FACTORY_MANAGER`, `NOBOX_MANAGER`, `READY_CABINETS_MANAGER`, `GERMANA_MANAGER` or `DESIGNER`. |
+| `npm run db:user -- <email> <password> "<name>" [ROLE]` | Create or update one account. `ROLE` is `ADMIN`, `FACTORY_MANAGER`, `NOBOX_MANAGER`, `READY_CABINETS_MANAGER`, `GERMANA_MANAGER`, `DESIGNER` or `SALES`. |
 
 ### Starting accounts
 
@@ -150,6 +170,7 @@ Created by `npm run db:seed` in an empty database. Password for all of them: **`
 | `readycabinets@trtnobox.com` | Ready Cabinets Manager |
 | `germana@trtnobox.com` | Germana Manager |
 | `design@trtnobox.com` | Designer |
+| `sales@trtnobox.com` | Sales |
 
 Change these before the system is used for real work, with `npm run db:user` or
 from the Team page.

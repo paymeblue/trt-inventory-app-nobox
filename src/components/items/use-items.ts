@@ -34,6 +34,11 @@ export type Item = {
   /** In stock minus reserved: what can still be reserved. */
   available: number;
   reorder_level: number;
+  /** Set by hand; otherwise the reorder figures are worked out from usage. */
+  reorder_level_manual: boolean;
+  reorder_quantity_manual: boolean;
+  /** Null uses the side's default lead time. */
+  lead_time_days: number | null;
   description: string | null;
   image_id: string | null;
   created_at: string;

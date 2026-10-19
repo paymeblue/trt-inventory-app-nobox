@@ -1,6 +1,6 @@
 import * as XLSX from "xlsx";
 import type { PoolClient } from "pg";
-import { hasLocations, LOCATION_LABELS, LOCATIONS, SOURCE_LABELS, SOURCE_LIST, SOURCES, type Location, type Source } from "./rbac";
+import { hasLocations, LOCATION_LABELS, LOCATIONS, SOURCE_LABELS, SOURCE_LIST, SOURCES, type Location, type ReservedFor, type Source } from "./rbac";
 import { createReservation, type Person } from "./reservations";
 import { RESERVED_SQL } from "./items";
 import { MAX_ROWS, number, text, type TemplateError } from "./template";
@@ -120,7 +120,7 @@ function parse(buffer: Buffer): { rows: Row[]; errors: TemplateError[]; fatal: b
 export async function importReservations(
   client: PoolClient,
   buffer: Buffer,
-  opts: { who: Person; commit: boolean },
+  opts: { who: Person; commit: boolean; reservedFor: ReservedFor },
 ): Promise<{ preview: ReservationPreview[]; errors: TemplateError[]; applied: boolean }> {
   const parsed = parse(buffer);
   if (parsed.fatal) return { preview: [], errors: parsed.errors, applied: false };
@@ -186,7 +186,11 @@ export async function importReservations(
   if (errors.length || !opts.commit) return { preview: errors.length ? [] : preview, errors, applied: false };
 
   for (const r of parsed.rows) {
-    await createReservation(client, { itemId: ids.get(r.row)!, quantity: r.quantity, project: r.project, notes: r.notes }, opts.who);
+    await createReservation(
+      client,
+      { itemId: ids.get(r.row)!, quantity: r.quantity, project: r.project, notes: r.notes, reservedFor: opts.reservedFor },
+      opts.who,
+    );
   }
   return { preview, errors: [], applied: true };
 }

@@ -15,7 +15,7 @@ const LOGS: Record<string, { table: string; columns: string; search: string[]; j
     columns: `l.ref, l.created_at, COALESCE(u.full_name, l.issued_by_name) AS by_name, COALESCE(u.email, l.issued_by_email) AS by_email,
               l.reservation_ref, l.project, l.quantity::float8 AS quantity, l.notes,
               COALESCE(ru.full_name, r.designer_name) AS reserved_by_name, COALESCE(ru.email, r.designer_email) AS reserved_by_email,
-              ru.job_title AS reserved_by_title, r.created_at AS reserved_at, r.notes AS purpose, r.status AS reservation_status,
+              ru.job_title AS reserved_by_title, r.reserved_for, r.created_at AS reserved_at, r.notes AS purpose, r.status AS reservation_status,
               r.quantity::float8 AS reserved_qty, GREATEST(r.quantity - r.issued_qty - r.released_qty, 0)::float8 AS balance`,
     // Who the goods are for, so the team knows where production is sending them.
     join: "LEFT JOIN reservations r ON r.id = l.reservation_id LEFT JOIN users ru ON ru.id = r.reserved_by",

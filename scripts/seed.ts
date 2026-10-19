@@ -19,6 +19,7 @@ const USERS = [
   ["readycabinets@trtnobox.com", "Ready Cabinets Manager", "READY_CABINETS_MANAGER"],
   ["germana@trtnobox.com", "Germana Manager", "GERMANA_MANAGER"],
   ["design@trtnobox.com", "Zainab Bello", "DESIGNER"],
+  ["sales@trtnobox.com", "Sales", "SALES"],
 ] as const;
 
 async function seed(client: PoolClient) {

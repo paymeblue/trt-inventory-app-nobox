@@ -22,6 +22,7 @@ import { useItems, type Item } from "@/components/items/use-items";
 import { ReorderBadge } from "@/components/forms/form-parts";
 import { StockAdditionForm, StockAdjustmentForm, StockIssueForm } from "@/components/forms/stock-forms";
 import { ItemForm } from "./item-form";
+import { ReorderSettings } from "./reorder-settings";
 import { ItemPhoto } from "./item-photo";
 import { templateUrl, UploadModal } from "./upload-modal";
 import { apiFetch } from "@/lib/client";
@@ -33,7 +34,10 @@ const PAGE_SIZE = 50;
 type Dashboard = {
   total_materials: number; opening_qty: number; available_qty: number; reserved_qty: number; issued_qty: number;
   low_stock_skus: number; reorder_now: number; out_of_stock: number;
-  reorder: { id: string; sku: string; name: string; unit: string; available: number; reorder_level: number; reorder_quantity: number; reorder_status: string }[];
+  reorder: {
+    id: string; sku: string; name: string; unit: string; available: number; reorder_level: number; reorder_quantity: number;
+    reorder_level_manual: boolean; reorder_quantity_manual: boolean; reorder_status: string;
+  }[];
 };
 
 type Activity = {
@@ -73,6 +77,7 @@ export function ManageView({ source }: { source: Source }) {
   const [dashboard, setDashboard] = React.useState<Dashboard | null>(null);
   const [waiting, setWaiting] = React.useState<number | null>(null);
   const [activity, setActivity] = React.useState<Activity[] | null>(null);
+  const [reorderSettings, setReorderSettings] = React.useState(false);
 
   React.useEffect(() => setPage(1), [params.q, params.category, params.status, params.location]);
   React.useEffect(() => {
@@ -239,7 +244,11 @@ export function ManageView({ source }: { source: Source }) {
 
         <div className="space-y-3 self-start">
           <Card>
-            <CardHeader title="Reorder alert" description="REORDER NOW and OUT OF STOCK, with the suggested Reorder_Quantity" />
+            <CardHeader
+              title="Reorder alert"
+              description="REORDER NOW and OUT OF STOCK, with the suggested Reorder_Quantity, worked out from usage"
+              action={<button onClick={() => setReorderSettings(true)} className="text-[12.5px] font-medium text-accent hover:underline">Settings</button>}
+            />
             {!d ? (
               <div className="space-y-2 p-4">{Array.from({ length: 4 }).map((_, i) => <div key={i} className="skeleton h-9 rounded-lg" />)}</div>
             ) : !d.reorder.length ? (
@@ -255,7 +264,8 @@ export function ManageView({ source }: { source: Source }) {
                     <div className="shrink-0 text-right">
                       <ReorderBadge status={r.reorder_status} />
                       <p className="tabular mt-0.5 text-[11px] text-fg-subtle">
-                        {qty(r.available)} avail · min {qty(r.reorder_level)}{r.reorder_quantity ? ` · order ${qty(r.reorder_quantity)}` : ""}
+                        {qty(r.available)} avail · min {qty(r.reorder_level)}{r.reorder_level_manual ? " (set)" : ""}
+                        {r.reorder_quantity ? ` · order ${qty(r.reorder_quantity)}${r.reorder_quantity_manual ? " (set)" : ""}` : ""}
                       </p>
                     </div>
                   </li>
@@ -308,6 +318,9 @@ export function ManageView({ source }: { source: Source }) {
           onClose={() => { setCreating(false); setEditing(null); }}
           onSaved={() => { setCreating(false); setEditing(null); refresh(); }}
         />
+      ) : null}
+      {reorderSettings ? (
+        <ReorderSettings source={source} onClose={() => setReorderSettings(false)} onSaved={() => { setReorderSettings(false); refresh(); }} />
       ) : null}
       {uploading ? <UploadModal source={source} onClose={closeUpload} onApplied={() => { closeUpload(); refresh(); }} /> : null}
 

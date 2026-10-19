@@ -11,25 +11,25 @@ import { EmptyState } from "@/components/ui/empty";
 import { Pagination } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { SearchInput, useDebounced } from "@/components/search-input";
-import { LiveIndicator, LocationBadge, SourceBadge } from "@/components/status";
+import { LiveIndicator, LocationBadge, ReservedForBadge, SourceBadge } from "@/components/status";
 import { useRequiredSession } from "@/components/session-context";
 import { useLiveVersion } from "@/components/items/use-items";
 import { StockIssueForm } from "@/components/forms/stock-forms";
 import { apiFetch, toQuery } from "@/lib/client";
-import { isManager, SOURCE_LABELS, SOURCE_LIST, SOURCES, sideOf, type Location, type Source } from "@/lib/rbac";
+import { isManager, SOURCE_LABELS, SOURCE_LIST, SOURCES, sideOf, type Location, type ReservedFor, type Source } from "@/lib/rbac";
 import { formatDateTime, qty, relativeTime } from "@/lib/utils";
 
 type Row = {
   id: string; ref: string; source: Source; created_at: string; by_name: string | null; by_email: string | null;
   sku: string; item_name: string; unit: string; quantity: number; notes: string | null; location: Location | null;
   reservation_ref: string | null; project: string | null;
-  reserved_by_name: string | null; reserved_by_email: string | null; reserved_by_title: string | null;
+  reserved_by_name: string | null; reserved_by_email: string | null; reserved_by_title: string | null; reserved_for: ReservedFor | null;
   purpose: string | null; reserved_qty: number | null; balance: number | null; reservation_status: string | null;
 };
 
 const PAGE_SIZE = 50;
 
-/** The Stock_Issue_Log: what left the store, for which designer and project. */
+/** The Stock_Issue_Log: what left the store, for whom (Design or Sales) and which project. */
 export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
   const me = useRequiredSession();
   const router = useRouter();
@@ -63,7 +63,7 @@ export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
     <>
       <PageHeader
         title="Issuance Log"
-        description="Everything issued out of the store against a designer's reservation: who reserved it, for which project, and what is still to go."
+        description="Everything issued out of the store against a reservation from Design or Sales: who reserved it, for which project, and what is still to go."
         action={
           <>
             <LiveIndicator syncedAt={liveAt} />
@@ -77,7 +77,7 @@ export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
           <p className="text-[12.5px] text-fg-muted sm:flex-1">
             {data ? <span className="tabular">{data.total.toLocaleString()} issues · {qty(data.quantity)} units issued.</span> : null}
           </p>
-          <SearchInput value={search} onChange={setSearch} placeholder="Search ISS or REQ number, designer, project, material…" className="sm:w-96" />
+          <SearchInput value={search} onChange={setSearch} placeholder="Search ISS or REQ number, who reserved, project, material…" className="sm:w-96" />
           <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Side" className="sm:w-36">
             <option value="">All sides</option>
             {SOURCES.map((s) => <option key={s} value={s}>{SOURCE_LABELS[s]}</option>)}
@@ -127,7 +127,7 @@ export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
                     {r.reserved_qty !== null ? <span className="block text-[11px] font-normal text-fg-subtle">of {qty(r.reserved_qty)} reserved</span> : null}
                   </Td>
                   <Td className="whitespace-nowrap text-[12.5px]">
-                    {r.reserved_by_name ?? "—"}
+                    <span className="flex items-center gap-1.5">{r.reserved_by_name ?? "—"} <ReservedForBadge value={r.reserved_for} /></span>
                     {r.reserved_by_title ? <span className="block text-[11.5px] text-fg-subtle">{r.reserved_by_title}</span> : null}
                     {r.reserved_by_email ? <span className="block text-[11px] text-fg-subtle">{r.reserved_by_email}</span> : null}
                   </Td>

@@ -13,7 +13,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { SearchInput, useDebounced } from "@/components/search-input";
-import { LiveIndicator, LocationBadge, SourceBadge } from "@/components/status";
+import { LiveIndicator, LocationBadge, ReservedForBadge, SourceBadge } from "@/components/status";
 import { useRequiredSession } from "@/components/session-context";
 import { useLiveVersion } from "@/components/items/use-items";
 import { ReserveModal, type Reservation } from "@/components/reservations/reserve-modal";
@@ -53,7 +53,7 @@ export function ReservationsView() {
   const reserves = canReserve(me.role);
   const [status, setStatus] = React.useState<string>("OPEN");
   const [source, setSource] = React.useState<string>(home);
-  const [mine, setMine] = React.useState(me.role === "DESIGNER");
+  const [mine, setMine] = React.useState(me.role === "DESIGNER" || me.role === "SALES");
   const [search, setSearch] = React.useState("");
   const [page, setPage] = React.useState(1);
   const term = useDebounced(search, 300);
@@ -87,8 +87,8 @@ export function ReservationsView() {
       <PageHeader
         title="Reservation Log"
         description={reserves
-          ? "Stock you and the other designers have set aside. The inventory team holding it issues it when it leaves the store for production; only then is it deducted."
-          : "What designers have reserved. Issue it, in full or in part, when it leaves the store for production; only then is it deducted."}
+          ? "Stock you, the designers and the sales teams have set aside. The inventory team holding it issues it when it leaves the store for production; only then is it deducted."
+          : "What designers and the sales teams have reserved. Issue it, in full or in part, when it leaves the store for production; only then is it deducted."}
         action={
           <>
             <LiveIndicator syncedAt={liveAt} />
@@ -122,7 +122,7 @@ export function ReservationsView() {
 
       <Card className="overflow-hidden">
         <div className="flex flex-col gap-2 border-b border-border p-3 sm:flex-row sm:items-center sm:p-4">
-          <SearchInput value={search} onChange={setSearch} placeholder="Search REQ number, project, material code or name, designer…" className="sm:flex-1" />
+          <SearchInput value={search} onChange={setSearch} placeholder="Search REQ number, project, material code or name, who reserved, design or sales…" className="sm:flex-1" />
           <div className="grid grid-cols-2 gap-2 sm:flex">
             <Select value={source} onChange={(e) => setSource(e.target.value)} aria-label="Side" className="sm:w-36">
               <option value="">All sides</option>
@@ -143,7 +143,7 @@ export function ReservationsView() {
           <EmptyState
             icon={ClipboardList}
             title={status === "OPEN" ? "Nothing waiting to be issued" : "No reservations here"}
-            description="Designers reserve stock with the Reservation Form, one material at a time or from Excel."
+            description="Designers and the sales teams reserve stock with the Reservation Form, one material at a time or from Excel."
           />
         ) : (
           <TableWrap>
@@ -188,7 +188,10 @@ export function ReservationsView() {
                       {open ? qty(r.balance) : "—"}
                     </Td>
                     <Td className="hidden whitespace-nowrap text-[12.5px] text-fg-muted lg:table-cell">
-                      {r.reserved_by === me.sub ? "You" : r.reserved_by_name ?? r.reserved_by_email ?? "—"}
+                      <span className="flex items-center gap-1.5">
+                        {r.reserved_by === me.sub ? "You" : r.reserved_by_name ?? r.reserved_by_email ?? "—"}
+                        <ReservedForBadge value={r.reserved_for} />
+                      </span>
                       {r.reserved_by !== me.sub && r.reserved_by_title ? <span className="block text-[11.5px] text-fg-subtle">{r.reserved_by_title}</span> : null}
                       {r.closed_by_name ? <span className="block text-[11.5px] text-fg-subtle">closed by {r.closed_by_name}</span> : null}
                     </Td>

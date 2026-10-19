@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Archive, Factory, MapPin, Store, Warehouse } from "lucide-react";
+import { Archive, Factory, MapPin, PenTool, ShoppingBag, Store, Warehouse } from "lucide-react";
 import { Badge, type Tone } from "./ui/badge";
-import { LOCATION_LABELS, SOURCE_LABELS, type Location, type Source } from "@/lib/rbac";
+import { LOCATION_LABELS, RESERVED_FOR_LABELS, SOURCE_LABELS, type Location, type ReservedFor, type Source } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
 export function StockStatus({ onHand, reorder }: { onHand: number; reorder: number }) {
@@ -25,6 +25,18 @@ export function SourceBadge({ source, className }: { source: Source; className?:
     <Badge tone={SOURCE_TONES[source]} className={className}>
       <Icon className="h-3 w-3" />
       {SOURCE_LABELS[source]}
+    </Badge>
+  );
+}
+
+/** Whether the person responsible for a reservation is in Design or in Sales. Neutral, as the colours belong to the sides. */
+export function ReservedForBadge({ value, className }: { value: ReservedFor | null | undefined; className?: string }) {
+  if (!value) return null;
+  const Icon = value === "SALES" ? ShoppingBag : PenTool;
+  return (
+    <Badge tone="neutral" className={className}>
+      <Icon className="h-3 w-3" />
+      {RESERVED_FOR_LABELS[value]}
     </Badge>
   );
 }

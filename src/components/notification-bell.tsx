@@ -5,24 +5,27 @@ import Link from "next/link";
 import { Bell } from "lucide-react";
 import { useLiveVersion } from "@/components/items/use-items";
 import { apiFetch } from "@/lib/client";
-import { SOURCE_LABELS, type Source } from "@/lib/rbac";
+import { RESERVED_FOR_LABELS, SOURCE_LABELS, type ReservedFor, type Source } from "@/lib/rbac";
 import { cn, qty, relativeTime } from "@/lib/utils";
 
 type Note = {
   id: string; action: "RESERVED" | "ISSUED" | "RELEASED" | "CANCELLED"; created_at: string; note: string | null;
   quantity: number; ref: string; project: string; source: Source; sku: string; item_name: string; unit: string;
-  by_name: string | null; unread: boolean;
+  by_name: string | null; reserved_for: ReservedFor | null; unread: boolean;
 };
 
 function describe(n: Note) {
   const what = `${qty(n.quantity)} ${n.unit} of ${n.sku} | ${n.item_name}`;
-  if (n.action === "RESERVED") return `${n.by_name ?? "A designer"} reserved ${what} for ${n.project}`;
+  if (n.action === "RESERVED") {
+    const team = n.reserved_for ? ` (${RESERVED_FOR_LABELS[n.reserved_for]})` : "";
+    return `${n.by_name ?? "Someone"}${team} reserved ${what} for ${n.project}`;
+  }
   if (n.action === "ISSUED") return `${n.ref} issued to production: ${what} for ${n.project} left ${SOURCE_LABELS[n.source]}`;
   return `${n.ref} released by ${n.by_name ?? "the inventory team"}: ${what} for ${n.project}`;
 }
 
 /**
- * The inventory team hears about new reservations on their side; designers hear
+ * The inventory team hears about new reservations on their side; designers and sales hear
  * when their reservations are issued to production or released. Kept until read.
  */
 export function NotificationBell() {

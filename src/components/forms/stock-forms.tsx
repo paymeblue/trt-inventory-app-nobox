@@ -11,7 +11,7 @@ import type { Reservation } from "@/components/reservations/reserve-modal";
 import { useRequiredSession } from "@/components/session-context";
 import { Lookup, MaterialPicker, n, StatusCheck } from "./form-parts";
 import { apiFetch } from "@/lib/client";
-import type { Source } from "@/lib/rbac";
+import { RESERVED_FOR_LABELS, type Source } from "@/lib/rbac";
 import { cn, qty } from "@/lib/utils";
 
 /** The form's "… By" and "… Email" cells, filled from the signed-in account. */
@@ -186,7 +186,7 @@ export function StockIssueForm({
         <Who name="Issued By" email="Issuer Email" />
         <Field label="Reservation ID">
           {!reservationId ? (
-            <SearchInput value={search} onChange={setSearch} placeholder="Search REQ number, project, material, designer…" className="mb-2" />
+            <SearchInput value={search} onChange={setSearch} placeholder="Search REQ number, project, material, who reserved…" className="mb-2" />
           ) : null}
           <Select value={selected} onChange={(e) => setSelected(e.target.value)} disabled={!open}>
             <option value="">{open ? `Choose one of ${filtered.length} open reservations` : "Loading…"}</option>
@@ -207,7 +207,8 @@ export function StockIssueForm({
         {r ? (
           <Lookup rows={[
             ["Reserved By", [r.reserved_by_name, r.reserved_by_title].filter(Boolean).join(" · ") || "—"],
-            ["Designer Email", r.reserved_by_email ?? "—"],
+            ["For", r.reserved_for ? RESERVED_FOR_LABELS[r.reserved_for] : "—"],
+            ["Email", r.reserved_by_email ?? "—"],
             ["Project Name", r.project],
             ["Purpose / Notes", r.notes ?? "—"],
             ["Material Code", <span key="c" className="code">{r.sku}</span>],

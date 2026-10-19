@@ -1,6 +1,7 @@
 import { transaction } from "@/lib/db";
 import { personOf, requireReserver } from "@/lib/session";
 import { fail, handle, ok } from "@/lib/api";
+import { reservedForOf } from "@/lib/rbac";
 import { importReservations } from "@/lib/reservation-template";
 
 export const runtime = "nodejs";
@@ -16,7 +17,9 @@ export const POST = handle(async (req: Request) => {
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const result = await transaction((client) =>
-    importReservations(client, buffer, { who: personOf(session), commit: form.get("commit") === "1" }),
+    importReservations(client, buffer, {
+      who: personOf(session), commit: form.get("commit") === "1", reservedFor: reservedForOf(session.role, form.get("reservedFor")),
+    }),
   );
   return ok({ filename: file.name, ...result });
 });

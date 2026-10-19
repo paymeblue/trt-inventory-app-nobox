@@ -28,7 +28,7 @@ export async function requireManager(source: Source): Promise<SessionPayload> {
 export async function requireReserver(): Promise<SessionPayload> {
   const session = await requireSession();
   if (!canReserve(session.role)) {
-    throw new HttpError(403, "Only designers reserve stock. The inventory teams issue reservations.");
+    throw new HttpError(403, "Only designers and the sales teams reserve stock. The inventory teams issue reservations.");
   }
   return session;
 }

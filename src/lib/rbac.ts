@@ -1,4 +1,4 @@
-export const ROLES = ["ADMIN", "FACTORY_MANAGER", "NOBOX_MANAGER", "READY_CABINETS_MANAGER", "GERMANA_MANAGER", "DESIGNER"] as const;
+export const ROLES = ["ADMIN", "FACTORY_MANAGER", "NOBOX_MANAGER", "READY_CABINETS_MANAGER", "GERMANA_MANAGER", "DESIGNER", "SALES"] as const;
 
 export type Role = (typeof ROLES)[number];
 
@@ -9,6 +9,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   READY_CABINETS_MANAGER: "Ready Cabinets Manager",
   GERMANA_MANAGER: "Germana Manager",
   DESIGNER: "Designer",
+  SALES: "Sales",
 };
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
@@ -18,6 +19,7 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   READY_CABINETS_MANAGER: "Updates Ready Cabinets stock from Excel and issues designers' reservations.",
   GERMANA_MANAGER: "Updates Germana stock from Excel and issues designers' reservations.",
   DESIGNER: "Sees every inventory and reserves stock for projects.",
+  SALES: "Sees every inventory and reserves stock for customers' orders, like the designers do.",
 };
 
 export const SOURCES = ["FACTORY", "NOBOX", "READY_CABINETS", "GERMANA"] as const;
@@ -82,9 +84,23 @@ export function isManager(role: string | null | undefined): boolean {
   return SOURCES.some((s) => canManage(role, s));
 }
 
-/** Designers reserve; the inventory teams only work on what was reserved. */
+/** Designers and the sales teams reserve; the inventory teams only work on what was reserved. */
 export function canReserve(role: string | null | undefined): boolean {
-  return role === "DESIGNER" || role === "ADMIN";
+  return role === "DESIGNER" || role === "SALES" || role === "ADMIN";
+}
+
+/** Who a reservation is for: the person responsible is in Design or in Sales. */
+export const RESERVED_FOR = ["DESIGN", "SALES"] as const;
+
+export type ReservedFor = (typeof RESERVED_FOR)[number];
+
+export const RESERVED_FOR_LABELS: Record<ReservedFor, string> = { DESIGN: "Design", SALES: "Sales" };
+
+/** Designers reserve for Design and sales for Sales; an administrator says which (Design by default). */
+export function reservedForOf(role: string, requested?: unknown): ReservedFor {
+  if (role === "SALES") return "SALES";
+  if (role === "ADMIN" && requested === "SALES") return "SALES";
+  return "DESIGN";
 }
 
 /** The side a manager works on; null for everyone else. */

@@ -10,7 +10,9 @@ import { useToast } from "@/components/ui/toast";
 import type { Item } from "@/components/items/use-items";
 import { apiFetch } from "@/lib/client";
 import { hasLocations, LOCATION_LABELS, LOCATIONS, SOURCE_LABELS, type Source } from "@/lib/rbac";
-import { cn, slugToSku } from "@/lib/utils";
+import { cn, qty, slugToSku } from "@/lib/utils";
+
+const autoPlaceholder = (value: number | null) => (value === null ? "Auto" : `Auto (${qty(value)})`);
 
 const UNITS = ["Sheet", "Pcs", "Unit", "Slab", "m", "kg", "litre", "roll", "pack", "set"];
 
@@ -37,8 +39,10 @@ export function ItemForm({
     spec: item?.spec ?? "",
     dimensions: item?.dimensions ?? "",
     unit: item?.unit ?? "Unit",
-    reorderLevel: item ? String(item.reorder_level) : "",
-    reorderQuantity: item ? String(item.reorder_quantity) : "",
+    // Blank means "work it out from usage".
+    reorderLevel: item?.reorder_level_manual ? String(item.reorder_level) : "",
+    reorderQuantity: item?.reorder_quantity_manual ? String(item.reorder_quantity) : "",
+    leadTimeDays: item?.lead_time_days ? String(item.lead_time_days) : "",
     description: item?.description ?? "",
     quantity: "0",
     location: item?.location ?? "LAGOS",
@@ -69,9 +73,10 @@ export function ItemForm({
       subcategory: form.subcategory,
       spec: form.spec,
       dimensions: form.dimensions,
-      reorderQuantity: form.reorderQuantity || 0,
+      reorderQuantity: form.reorderQuantity,
       unit: form.unit,
-      reorderLevel: form.reorderLevel || 0,
+      reorderLevel: form.reorderLevel,
+      leadTimeDays: form.leadTimeDays,
       description: form.description,
       imageId,
     };
@@ -205,15 +210,29 @@ export function ItemForm({
           <Field label="Dimensions">
             <Input value={form.dimensions} onChange={set("dimensions")} placeholder="60 X 60" />
           </Field>
-          <Field label="Reorder Quantity" hint="suggested order">
-            <Input type="number" min="0" step="any" inputMode="decimal" value={form.reorderQuantity} onChange={set("reorderQuantity")} placeholder="0" className="tabular" />
-          </Field>
           <Field label="Reorder Level" hint="REORDER NOW at or below">
             <Input
               type="number" min="0" step="any" inputMode="decimal"
-              value={form.reorderLevel} onChange={set("reorderLevel")} placeholder="0" className="tabular"
+              value={form.reorderLevel} onChange={set("reorderLevel")} className="tabular"
+              placeholder={autoPlaceholder(item && !item.reorder_level_manual ? item.reorder_level : null)}
             />
           </Field>
+          <Field label="Reorder Quantity" hint="suggested order">
+            <Input
+              type="number" min="0" step="any" inputMode="decimal"
+              value={form.reorderQuantity} onChange={set("reorderQuantity")} className="tabular"
+              placeholder={autoPlaceholder(item && !item.reorder_quantity_manual ? item.reorder_quantity : null)}
+            />
+          </Field>
+          <Field label="Lead time" hint="days, order to arrival">
+            <Input
+              type="number" min="0.5" step="any" inputMode="decimal"
+              value={form.leadTimeDays} onChange={set("leadTimeDays")} placeholder={`${SOURCE_LABELS[source]} default`} className="tabular"
+            />
+          </Field>
+          <p className="self-end pb-2 text-[12px] text-fg-subtle sm:pb-2.5">
+            Leave the reorder figures blank to work them out from what is issued: lead-time demand plus safety stock, and enough for the side&apos;s days of cover.
+          </p>
         </div>
 
         <Field label="Description">

@@ -4,13 +4,14 @@ import * as React from "react";
 import { Users } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
-import { Field, Input } from "@/components/ui/field";
+import { Field, Input, Select } from "@/components/ui/field";
 import { useToast } from "@/components/ui/toast";
-import { LocationBadge, SourceBadge } from "@/components/status";
+import { LocationBadge, ReservedForBadge, SourceBadge } from "@/components/status";
 import type { Item } from "@/components/items/use-items";
 import { useRequiredSession } from "@/components/session-context";
 import { Lookup, MaterialPicker, n, StatusCheck } from "@/components/forms/form-parts";
 import { apiFetch } from "@/lib/client";
+import { RESERVED_FOR, RESERVED_FOR_LABELS, reservedForOf, type ReservedFor } from "@/lib/rbac";
 import { qty, relativeTime } from "@/lib/utils";
 
 /** A Reservation_Log row. */
@@ -20,7 +21,7 @@ export type Reservation = {
   project: string; notes: string | null;
   status: "RESERVED" | "PART_ISSUED" | "ISSUED" | "CANCELLED"; legacy_status: string | null;
   available_at_request: number | null; created_at: string; closed_at: string | null;
-  reserved_by: string | null; reserved_by_name: string | null; reserved_by_email: string | null; reserved_by_title: string | null;
+  reserved_by: string | null; reserved_for: ReservedFor | null; reserved_by_name: string | null; reserved_by_email: string | null; reserved_by_title: string | null;
   item_name: string; sku: string; unit: string; image_id: string | null; category: string | null;
   location: Item["location"]; dimensions: string | null;
   in_stock: number; closed_by_name: string | null;
@@ -42,8 +43,9 @@ export function useOpenReservations(itemId: string | null, enabled = true) {
 }
 
 /**
- * Reservation_Form. Designer Name and Email come from the signed-in account;
- * the lookups and Status Check mirror the workbook's.
+ * Reservation_Form. The name and email of the person responsible come from
+ * the signed-in account, and so does whether they are in Design or Sales (an
+ * administrator picks). The lookups and Status Check mirror the workbook's.
  */
 export function ReserveModal({
   item: initial, onClose, onSaved, inline,
@@ -55,6 +57,7 @@ export function ReserveModal({
   const [project, setProject] = React.useState("");
   const [amount, setAmount] = React.useState("1");
   const [notes, setNotes] = React.useState("");
+  const [reservedFor, setReservedFor] = React.useState<ReservedFor>(reservedForOf(me.role));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -77,7 +80,7 @@ export function ReserveModal({
     try {
       const made = await apiFetch<{ ref: string }>("/api/reservations", {
         method: "POST",
-        body: JSON.stringify({ itemId: item.id, quantity, project, notes }),
+        body: JSON.stringify({ itemId: item.id, quantity, project, notes, reservedFor }),
       });
       toast(`${made.ref}: ${qty(quantity)} ${item.unit} of ${item.sku} | ${item.name} reserved for ${project}.`);
       onSaved();
@@ -96,9 +99,18 @@ export function ReserveModal({
   );
   const content = (
       <form id="reserve-form" onSubmit={submit} className="space-y-3.5">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Field label="Designer Name"><Input value={me.name} disabled /></Field>
-          <Field label="Designer Email"><Input value={me.email} disabled /></Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <Field label="Reserved By"><Input value={me.name} disabled /></Field>
+          <Field label="Email"><Input value={me.email} disabled /></Field>
+          <Field label="For">
+            {me.role === "ADMIN" ? (
+              <Select value={reservedFor} onChange={(e) => setReservedFor(e.target.value as ReservedFor)}>
+                {RESERVED_FOR.map((f) => <option key={f} value={f}>{RESERVED_FOR_LABELS[f]}</option>)}
+              </Select>
+            ) : (
+              <div className="flex h-10 items-center"><ReservedForBadge value={reservedFor} /></div>
+            )}
+          </Field>
         </div>
         <Field label="Project Name">
           <Input autoFocus={Boolean(initial)} value={project} onChange={(e) => setProject(e.target.value)} placeholder="DAGGASH, Palm Springs, EXHIBITION…" />
@@ -146,7 +158,8 @@ export function ReserveModal({
                 <li key={r.id} className="flex flex-wrap justify-between gap-x-3">
                   <span><span className="tabular font-medium">{qty(r.balance)}</span> for {r.project}</span>
                   <span className="text-fg-muted">
-                    {r.reserved_by === me.sub ? "you" : r.reserved_by_name ?? r.reserved_by_email ?? "—"} · {relativeTime(r.created_at)} · <span className="code">{r.ref}</span>
+                    {r.reserved_by === me.sub ? "you" : r.reserved_by_name ?? r.reserved_by_email ?? "—"}
+                    {r.reserved_for ? ` (${RESERVED_FOR_LABELS[r.reserved_for]})` : ""} · {relativeTime(r.created_at)} · <span className="code">{r.ref}</span>
                   </span>
                 </li>
               ))}
@@ -174,7 +187,7 @@ export function ReserveModal({
       onClose={onClose}
       size="lg"
       title="Reservation Form"
-      description="Designers reserve stock here. The stock is set aside for your project and is taken out when the inventory team issues it."
+      description="Designers and the sales teams reserve stock here. The stock is set aside for your project and is taken out when the inventory team issues it."
       footer={footer}
     >
       {content}

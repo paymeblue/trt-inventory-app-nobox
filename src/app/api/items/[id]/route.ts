@@ -3,6 +3,7 @@ import { getSession, requireManager } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
 import type { Source } from "@/lib/rbac";
 import { ensureCategory, ITEM_COLUMNS, ITEM_FROM, parseItemBody } from "@/lib/items";
+import { recalculateReorder } from "@/lib/reorder";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,14 +53,19 @@ export const PATCH = handle(async (req: Request, ctx: Ctx) => {
          reorder_level = COALESCE($10, reorder_level),
          description = CASE WHEN $11 THEN NULLIF($12, '') ELSE description END,
          image_id = CASE WHEN $13 THEN $14::uuid ELSE image_id END,
+         reorder_level_manual = CASE WHEN $22 THEN $10 IS NOT NULL ELSE reorder_level_manual END,
+         reorder_quantity_manual = CASE WHEN $23 THEN $21 IS NOT NULL ELSE reorder_quantity_manual END,
+         lead_time_days = CASE WHEN $24 THEN $25::numeric ELSE lead_time_days END,
          updated_by = $15,
          updated_at = now()
        WHERE id = $16 RETURNING id`,
       [f.sku, f.name, has("category"), category ?? "", has("colour"), f.colour ?? "",
-       has("spec"), f.spec ?? "", f.unit, f.reorderLevel, has("description"), f.description ?? "",
+       has("spec"), f.spec ?? "", f.unit, f.reorderLevel ?? null, has("description"), f.description ?? "",
        has("imageId"), f.imageId, session.sub, id,
-       has("subcategory"), f.subcategory ?? "", has("dimensions"), f.dimensions ?? "", f.reorderQuantity],
+       has("subcategory"), f.subcategory ?? "", has("dimensions"), f.dimensions ?? "", f.reorderQuantity ?? null,
+       f.reorderLevel !== undefined, f.reorderQuantity !== undefined, f.leadTimeDays !== undefined, f.leadTimeDays ?? null],
     );
+    if (rows[0]) await recalculateReorder(client, { itemId: id });
     return rows[0];
   });
   return ok(row);

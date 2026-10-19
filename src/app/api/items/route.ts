@@ -3,6 +3,7 @@ import { getSession, requireManager } from "@/lib/session";
 import { fail, handle, ok, readJson } from "@/lib/api";
 import { hasLocations, isLocation, isSource, SOURCE_LABELS, SOURCE_LIST, SOURCES, type Source } from "@/lib/rbac";
 import { ACTIVE_SQL, AVAILABLE_SQL, ensureCategory, ITEM_COLUMNS, ITEM_FROM, parseItemBody, recordMovement, RESERVED_SQL, STATUS_SQL } from "@/lib/items";
+import { recalculateReorder, refreshReorderIfStale } from "@/lib/reorder";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,7 @@ export const GET = handle(async (req: Request) => {
   if (status === "nophoto") where.push("i.image_id IS NULL");
 
   const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  await transaction(refreshReorderIfStale);
 
   const [items, totals, categories, counts] = await Promise.all([
     query(
@@ -133,12 +135,15 @@ export const POST = handle(async (req: Request) => {
     const category = await ensureCategory(client, source, fields.category, session.sub);
     const { rows } = await client.query<{ id: string }>(
       `INSERT INTO items (source, sku, name, category, subcategory, spec, dimensions, colour, unit, opening_qty, quantity,
-                          reorder_level, reorder_quantity, description, image_id, created_by, updated_by, location)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$15,$16) RETURNING id`,
+                          reorder_level, reorder_quantity, description, image_id, created_by, updated_by, location,
+                          reorder_level_manual, reorder_quantity_manual, lead_time_days)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,$14,$15,$15,$16,$17,$18,$19) RETURNING id`,
       [source, fields.sku, fields.name, category, fields.subcategory, fields.spec, fields.dimensions, fields.colour,
        fields.unit ?? "Unit", quantity, fields.reorderLevel ?? 0, fields.reorderQuantity ?? 0, fields.description,
-       fields.imageId, session.sub, location],
+       fields.imageId, session.sub, location,
+       typeof fields.reorderLevel === "number", typeof fields.reorderQuantity === "number", fields.leadTimeDays ?? null],
     );
+    await recalculateReorder(client, { itemId: rows[0].id });
     await recordMovement(client, {
       itemId: rows[0].id, source, kind: "OPENING", delta: quantity, balance: quantity, note: "Opening_Qty", userId: session.sub,
     });

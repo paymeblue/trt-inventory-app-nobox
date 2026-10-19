@@ -29,7 +29,7 @@ async function reservation(id: string) {
 }
 
 const reserve = (quantity: number, project = "DAGGASH") =>
-  inTransaction(pool, (c) => createReservation(c, { itemId, quantity, project, notes: "CLOSETS" }, designer));
+  inTransaction(pool, (c) => createReservation(c, { itemId, quantity, project, notes: "CLOSETS", reservedFor: "DESIGN" }, designer));
 const issue = (id: string, quantity?: number) =>
   inTransaction(pool, (c) => issueReservation(c, id, manager, { quantity, notes: "sent to production" }));
 const adjust = (type: string, quantity: number, relatedRef?: string) =>
@@ -44,8 +44,9 @@ beforeEach(async () => {
   designer = { id: await makeUser(pool, "design@test.local", "DESIGNER"), name: "Sunday Agbocheni", email: "design@test.local" };
   manager = { id: await makeUser(pool, "factory@test.local", "FACTORY_MANAGER"), name: "Osamudiamen A.", email: "factory@test.local" };
   const { rows } = await pool.query<{ id: string }>(
-    `INSERT INTO items (source, sku, name, unit, opening_qty, quantity, reorder_level, reorder_quantity)
-     VALUES ('FACTORY', 'FINSA 116', 'LISSA OAK 18MM', 'Sheet', 10, 10, 2, 4) RETURNING id`,
+    `INSERT INTO items (source, sku, name, unit, opening_qty, quantity, reorder_level, reorder_quantity,
+                        reorder_level_manual, reorder_quantity_manual)
+     VALUES ('FACTORY', 'FINSA 116', 'LISSA OAK 18MM', 'Sheet', 10, 10, 2, 4, true, true) RETURNING id`,
   );
   itemId = rows[0].id;
 });
@@ -252,7 +253,7 @@ describe("Cancel and log", () => {
 describe("Excel reservation import", () => {
   const HEADERS = ["Material_Code", "Material_Name", "From", "Location", "Quantity_Requested", "Project_Name", "Purpose_Notes"];
   const upload = (rows: unknown[][], commit = true) =>
-    inTransaction(pool, (c) => importReservations(c, workbook("Reservations", [HEADERS, ...rows]), { who: designer, commit }));
+    inTransaction(pool, (c) => importReservations(c, workbook("Reservations", [HEADERS, ...rows]), { who: designer, commit, reservedFor: "DESIGN" }));
 
   test("valid rows become reservations in the database", async () => {
     const result = await upload([["finsa 116", "", "Factory", "", 3, "DAGGASH", "CLOSETS"]]);

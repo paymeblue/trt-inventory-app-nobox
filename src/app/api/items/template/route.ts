@@ -23,8 +23,10 @@ export const GET = handle(async (req: Request) => {
     await requireManager(source);
     materials = await query<TemplateMaterial>(
       `SELECT DISTINCT ON (lower(sku), lower(name), lower(coalesce(subcategory,'')), lower(coalesce(spec,'')), lower(coalesce(dimensions,'')))
-              sku, name, category, subcategory, spec, dimensions, unit, reorder_level::float8 AS reorder_level,
-              reorder_quantity::float8 AS reorder_quantity, description
+              sku, name, category, subcategory, spec, dimensions, unit, description,
+              CASE WHEN reorder_level_manual THEN reorder_level::float8 END AS reorder_level,
+              CASE WHEN reorder_quantity_manual THEN reorder_quantity::float8 END AS reorder_quantity,
+              lead_time_days::float8 AS lead_time_days
          FROM items WHERE source = $1
         ORDER BY lower(sku), lower(name), lower(coalesce(subcategory,'')), lower(coalesce(spec,'')), lower(coalesce(dimensions,'')), created_at`,
       [source],
