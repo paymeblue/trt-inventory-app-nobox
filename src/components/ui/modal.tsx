@@ -3,6 +3,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
+import gsap from "gsap";
 import { cn } from "@/lib/utils";
 
 export function Modal({
@@ -24,6 +25,25 @@ export function Modal({
 }) {
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
+  const backdrop = React.useRef<HTMLDivElement>(null);
+  const panel = React.useRef<HTMLDivElement>(null);
+  const body = React.useRef<HTMLDivElement>(null);
+
+  // The panel springs up out of the page, then its contents follow in a short wave.
+  React.useLayoutEffect(() => {
+    if (!mounted || !open || !panel.current) return;
+    const mm = gsap.matchMedia();
+    mm.add("(prefers-reduced-motion: no-preference)", () => {
+      const tl = gsap.timeline({ defaults: { ease: "expo.out" } });
+      tl.from(backdrop.current, { opacity: 0, duration: 0.35, ease: "power2.out" })
+        .from(panel.current, {
+          y: 48, scale: 0.94, rotationX: 9, transformPerspective: 1100, transformOrigin: "50% 100%",
+          opacity: 0, filter: "blur(8px)", duration: 0.75, clearProps: "filter",
+        }, 0)
+        .from(body.current?.children ?? [], { y: 16, opacity: 0, duration: 0.6, stagger: 0.05 }, 0.12);
+    });
+    return () => mm.revert();
+  }, [mounted, open]);
 
   React.useEffect(() => {
     if (!open) return;
@@ -51,18 +71,20 @@ export function Modal({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
       <div
-        className="absolute inset-0 animate-fade-in bg-black/70 backdrop-blur-sm"
+        ref={backdrop}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
         aria-hidden
       />
       <div
+        ref={panel}
         role="dialog"
         aria-modal="true"
         aria-label={title}
         className={cn(
           "relative flex max-h-[92dvh] w-full flex-col overflow-hidden",
           "rounded-t-2xl border border-border bg-surface shadow-[var(--shadow)]",
-          "animate-fade-up sm:rounded-2xl",
+          "sm:rounded-2xl",
           widths[size],
         )}
       >
@@ -80,7 +102,7 @@ export function Modal({
           </button>
         </div>
 
-        <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-4">{children}</div>
+        <div ref={body} className="scrollbar-thin flex-1 overflow-y-auto px-5 py-4">{children}</div>
 
         {footer ? (
           <div className="flex flex-wrap items-center justify-end gap-3 border-t border-border bg-surface-2/50 px-5 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6 sm:pt-5 sm:pb-5">

@@ -19,6 +19,7 @@ import { useItems, type Item } from "@/components/items/use-items";
 import { useSession } from "@/components/session-context";
 import { canReserve, SOURCE_LABELS, SOURCE_LIST, SOURCES, type Source } from "@/lib/rbac";
 import { cn, qty, relativeTime } from "@/lib/utils";
+import { CardGlare, MotionGroup } from "@/components/motion";
 
 
 
@@ -170,10 +171,14 @@ export function InventoryView() {
             }
           />
         ) : view === "grid" ? (
-          <div className={cn("grid grid-cols-2 gap-2.5 p-2.5 sm:gap-3 sm:p-4 lg:grid-cols-3 xl:grid-cols-4", loading && "opacity-60")}>
+          <MotionGroup
+            revealKey={items.map((i) => i.id).join()}
+            className={cn("grid grid-cols-2 gap-2.5 p-2.5 sm:gap-3 sm:p-4 lg:grid-cols-3 xl:grid-cols-4", loading && "opacity-60")}
+          >
             {items.map((item) => (
               <div
                 key={item.id}
+                data-card
                 role="button"
                 tabIndex={0}
                 onClick={() => setOpen(item)}
@@ -184,16 +189,15 @@ export function InventoryView() {
                   }
                 }}
                 className={cn(
-                  "group flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border bg-surface text-left transition-all hover:border-border-strong hover:shadow-[var(--shadow)]",
+                  "group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border border-border bg-surface text-left transition-colors will-change-transform hover:border-border-strong focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-[var(--ring)]",
                   changed.has(item.id) && "animate-flash",
                 )}
               >
+                <CardGlare />
                 <div className="relative aspect-[4/3] w-full overflow-hidden bg-surface-2">
-                  <ProductImage
-                    imageId={item.image_id}
-                    name={item.name}
-                    className="h-full w-full rounded-none border-0 transition-transform duration-300 group-hover:scale-[1.03]"
-                  />
+                  <div data-media className="h-full w-full">
+                    <ProductImage imageId={item.image_id} name={item.name} className="h-full w-full rounded-none border-0" />
+                  </div>
                   <div className="absolute left-2 top-2 flex flex-wrap gap-1">
                     <SourceBadge source={item.source} className="shadow-sm" />
                     <LocationBadge location={item.location} className="bg-surface shadow-sm" />
@@ -221,7 +225,7 @@ export function InventoryView() {
                 </div>
               </div>
             ))}
-          </div>
+          </MotionGroup>
         ) : (
           <div className={cn(loading && "opacity-60")}>
             <TableWrap>

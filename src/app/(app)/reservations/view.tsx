@@ -22,6 +22,7 @@ import { StockIssueForm } from "@/components/forms/stock-forms";
 import { apiFetch, toQuery } from "@/lib/client";
 import { canManage, canReserve, sideOf, SOURCE_LABELS, SOURCES, type Source } from "@/lib/rbac";
 import { cn, formatDateTime, qty, relativeTime } from "@/lib/utils";
+import { CardGlare, MotionGroup } from "@/components/motion";
 
 
 const STATUSES = [
@@ -146,7 +147,57 @@ export function ReservationsView() {
             description="Designers and the sales teams reserve stock with the Reservation Form, one material at a time or from Excel."
           />
         ) : (
-          <TableWrap>
+          <>
+          {/* Phones get one card per reservation, with its actions in reach. */}
+          <MotionGroup revealKey={data.items.map((r) => r.id).join()} className="space-y-2 p-2.5 sm:hidden">
+            {data.items.map((r) => {
+              const manager = canManage(me.role, r.source);
+              const open = r.status === "RESERVED" || r.status === "PART_ISSUED";
+              return (
+                <div key={r.id} data-card className="relative overflow-hidden rounded-xl border border-border bg-surface-2/40 p-3.5">
+                  <CardGlare />
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="code text-[12.5px] font-semibold">{r.ref} <span className="font-normal text-fg-subtle">· {relativeTime(r.created_at)}</span></p>
+                      <p className="mt-1 truncate text-[14px] font-medium">{r.item_name}</p>
+                      <p className="code truncate text-[11.5px] text-fg-subtle">{[r.sku, r.dimensions].filter(Boolean).join(" · ")}</p>
+                    </div>
+                    {STATUS_BADGE[r.status]}
+                  </div>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <SourceBadge source={r.source} />
+                    <LocationBadge location={r.location} />
+                    <ReservedForBadge value={r.reserved_for} company={r.reserved_by_company} />
+                  </div>
+                  <p className="mt-2 text-[13px]">
+                    {r.project}
+                    <span className="text-fg-subtle"> · {r.reserved_by === me.sub ? "you" : r.reserved_by_name ?? r.reserved_by_email ?? "—"}</span>
+                  </p>
+                  {r.notes ? <p className="mt-0.5 line-clamp-2 text-[12px] text-fg-subtle">{r.notes}</p> : null}
+                  <div className="mt-3 flex items-end justify-between gap-3 border-t border-border pt-3">
+                    <dl className="flex gap-4 text-[11.5px] text-fg-subtle">
+                      <div><dt>Reserved</dt><dd className="tabular text-[14px] font-semibold text-fg">{qty(r.quantity)} <span className="text-[11px] font-normal text-fg-subtle">{r.unit}</span></dd></div>
+                      {r.issued_qty ? <div><dt>Issued</dt><dd className="tabular text-[14px] font-semibold text-fg-muted">{qty(r.issued_qty)}</dd></div> : null}
+                      {open ? <div><dt>Balance</dt><dd className={cn("tabular text-[14px] font-semibold text-fg", r.balance > r.in_stock && "text-danger")}>{qty(r.balance)}</dd></div> : null}
+                    </dl>
+                    {open ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        {manager || r.reserved_by === me.sub ? (
+                          <Button size="sm" variant="ghost" onClick={() => setCancelling(r)}>
+                            {manager && r.reserved_by !== me.sub ? "Release" : "Cancel"}
+                          </Button>
+                        ) : null}
+                        {manager ? (
+                          <Button size="sm" onClick={() => setIssuing(r)}><Truck className="h-3.5 w-3.5" /> Issue</Button>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </MotionGroup>
+          <TableWrap className="hidden sm:block">
             <thead>
               <tr>
                 <Th>Reservation ID</Th>
@@ -218,6 +269,7 @@ export function ReservationsView() {
               })}
             </tbody>
           </TableWrap>
+          </>
         )}
 
         {data && data.total > PAGE_SIZES[0] ? (

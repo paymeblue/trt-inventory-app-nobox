@@ -165,7 +165,7 @@ export function CategoriesView({ sides, initial }: { sides: Source[]; initial: S
               <tr>
                 <Th>Category</Th>
                 <Th align="right">Items</Th>
-                <Th align="right">With stock</Th>
+                <Th align="right" className="hidden sm:table-cell">With stock</Th>
                 <Th align="right" className="hidden md:table-cell">Units</Th>
                 <Th align="center">Active</Th>
                 <Th align="right"><span className="sr-only">Actions</span></Th>
@@ -192,9 +192,12 @@ export function CategoriesView({ sides, initial }: { sides: Source[]; initial: S
                         {c.is_active && c.item_count > 0 && c.in_stock === 0 ? <Badge tone="danger">no stock</Badge> : null}
                       </span>
                     )}
+                    {editing?.id !== c.id && c.item_count ? (
+                      <span className="tabular block text-[11.5px] text-fg-subtle sm:hidden">{c.in_stock} of {c.item_count} with stock</span>
+                    ) : null}
                   </Td>
                   <Td align="right" className="tabular text-[13px]">{c.item_count}</Td>
-                  <Td align="right" className={cn("tabular text-[13px]", c.item_count && !c.in_stock ? "text-danger" : "text-fg-muted")}>
+                  <Td align="right" className={cn("tabular hidden text-[13px] sm:table-cell", c.item_count && !c.in_stock ? "text-danger" : "text-fg-muted")}>
                     {c.item_count ? `${c.in_stock} of ${c.item_count}` : "—"}
                   </Td>
                   <Td align="right" className="tabular hidden text-[13px] text-fg-muted md:table-cell">{c.units ? qty(c.units) : "—"}</Td>

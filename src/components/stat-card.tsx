@@ -1,6 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { CardGlare } from "./motion";
 
 type Tone = "neutral" | "ok" | "warn" | "danger" | "accent" | "info" | "violet" | "teal";
 
@@ -32,15 +33,17 @@ export function StatCard({
 }) {
   const inner = (
     <div
+      data-card
       className={cn(
-        "group flex h-full flex-col justify-between gap-4 rounded-[var(--radius-card)] border border-border",
-        "bg-surface p-4 transition-colors sm:p-[18px]",
+        "group relative flex h-full flex-col justify-between gap-4 overflow-hidden rounded-[var(--radius-card)] border border-border",
+        "bg-surface p-4 transition-colors will-change-transform sm:p-[18px]",
         href && "hover:border-border-strong hover:bg-surface-2/40",
       )}
     >
+      <CardGlare />
       <div className="flex items-start justify-between gap-3">
         <p className="text-[12.5px] font-medium leading-tight text-fg-muted">{label}</p>
-        <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", ICON_TONES[tone])}>
+        <span data-media className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg", ICON_TONES[tone])}>
           <Icon className="h-4 w-4" />
         </span>
       </div>

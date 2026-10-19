@@ -18,6 +18,7 @@ import { StockIssueForm } from "@/components/forms/stock-forms";
 import { apiFetch, toQuery } from "@/lib/client";
 import { isManager, SOURCE_LABELS, SOURCE_LIST, SOURCES, sideOf, type Location, type ReservedFor, type Source } from "@/lib/rbac";
 import { formatDateTime, qty, relativeTime } from "@/lib/utils";
+import { CardGlare, MotionGroup } from "@/components/motion";
 
 type Row = {
   id: string; ref: string; source: Source; created_at: string; by_name: string | null; by_email: string | null;
@@ -94,7 +95,41 @@ export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
             description={issues ? "Issue a reservation from the Reservation Log, or with Issue Stock." : `Items appear here when ${SOURCE_LIST} issues them.`}
           />
         ) : (
-          <TableWrap>
+          <>
+          <MotionGroup revealKey={data.items.map((r) => r.id).join()} className="space-y-2 p-2.5 sm:hidden">
+            {data.items.map((r) => (
+              <div key={r.id} data-card className="relative overflow-hidden rounded-xl border border-border bg-surface-2/40 p-3.5">
+                <CardGlare />
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="code text-[12.5px] font-semibold">
+                      {r.ref} <span className="font-normal text-fg-muted">{r.reservation_ref ? `· ${r.reservation_ref}` : ""}</span>
+                    </p>
+                    <p className="mt-1 truncate text-[14px] font-medium">{r.item_name}</p>
+                    <p className="code truncate text-[11.5px] text-fg-subtle">{r.sku}</p>
+                  </div>
+                  <p className="tabular shrink-0 text-right text-[16px] font-semibold leading-tight">
+                    {qty(r.quantity)} <span className="text-[11px] font-normal text-fg-subtle">{r.unit}</span>
+                    {r.reserved_qty !== null ? <span className="block text-[11px] font-normal text-fg-subtle">of {qty(r.reserved_qty)}</span> : null}
+                  </p>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <SourceBadge source={r.source} />
+                  <LocationBadge location={r.location} />
+                  <ReservedForBadge value={r.reserved_for} company={r.reserved_by_company} />
+                </div>
+                <p className="mt-2 text-[12.5px]">
+                  {r.project ?? "—"}
+                  <span className="text-fg-subtle"> · for {r.reserved_by_name ?? "—"}</span>
+                </p>
+                <p className="mt-2 flex items-center justify-between gap-3 border-t border-border pt-2.5 text-[11.5px] text-fg-subtle">
+                  <span>Issued by {r.by_name ?? "—"} · {relativeTime(r.created_at)}</span>
+                  {r.balance ? <span className="tabular font-semibold text-warn">{qty(r.balance)} {r.unit} to go</span> : null}
+                </p>
+              </div>
+            ))}
+          </MotionGroup>
+          <TableWrap className="hidden sm:block">
             <thead>
               <tr>
                 <Th>Issue / Reservation ID</Th>
@@ -148,6 +183,7 @@ export function IssuanceView({ startIssuing }: { startIssuing: boolean }) {
               ))}
             </tbody>
           </TableWrap>
+          </>
         )}
         {data && data.total > PAGE_SIZES[0] ? (
           <Pagination page={page} pageSize={pageSize} total={data.total} onPage={setPage} onPageSize={(size) => { setPageSize(size); setPage(1); }} />

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  Archive, Ban, Boxes, ClipboardList, Download, FileDown, History, PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal,
+  Archive, Ban, Boxes, Ellipsis, ClipboardList, Download, FileDown, History, PackageMinus, PackagePlus, Pencil, Plus, SlidersHorizontal,
   Tags, Trash2, TriangleAlert, Truck, Upload,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
@@ -16,6 +16,7 @@ import { DEFAULT_PAGE_SIZE, Pagination, PAGE_SIZES } from "@/components/ui/pagin
 import { TableWrap, Th, Td, Tr } from "@/components/ui/table";
 import { useToast } from "@/components/ui/toast";
 import { StatCard } from "@/components/stat-card";
+import { MotionGroup } from "@/components/motion";
 import { LiveIndicator, LocationBadge, SOURCE_TONES } from "@/components/status";
 import { ItemFilters, useFilters } from "@/components/items/filters";
 import { useItems, type Item } from "@/components/items/use-items";
@@ -134,7 +135,7 @@ export function ManageView({ source }: { source: Source }) {
       />
 
       {/* The workbook's Dashboard sheet. */}
-      <div className="mb-3 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
+      <MotionGroup revealKey={source} className="mb-3 grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Total Materials" value={d ? d.total_materials.toLocaleString() : "—"} icon={Boxes} tone={SOURCE_TONES[source]} />
         <StatCard label="Opening Qty" value={d ? qty(d.opening_qty) : "—"} icon={History} />
         <StatCard label="Available Qty" value={d ? qty(d.available_qty) : "—"} icon={PackagePlus} tone="ok" />
@@ -147,7 +148,7 @@ export function ManageView({ source }: { source: Source }) {
         <button className="text-left" onClick={() => setFilters({ ...filters, status: "attention" })}>
           <StatCard label="Low Stock SKUs" value={d ? d.low_stock_skus.toLocaleString() : "—"} sub={d ? `${d.reorder_now} reorder now · ${d.out_of_stock} out` : undefined} icon={TriangleAlert} tone="danger" />
         </button>
-      </div>
+      </MotionGroup>
 
       <div className="grid grid-cols-1 gap-3 2xl:grid-cols-[1fr_360px]">
         <Card className="min-w-0 overflow-hidden">
@@ -192,50 +193,65 @@ export function ManageView({ source }: { source: Source }) {
                   <Th align="right" className="hidden md:table-cell">Reserved</Th>
                   <Th align="right" className="hidden xl:table-cell">Issued</Th>
                   <Th align="right" className="hidden lg:table-cell">Bad</Th>
-                  <Th align="right">In stock</Th>
+                  <Th align="right" className="hidden sm:table-cell">In stock</Th>
                   <Th align="right">Available</Th>
                   <Th align="center" className="hidden sm:table-cell">Reorder_Status</Th>
                   <Th align="right"><span className="sr-only">Actions</span></Th>
                 </tr>
               </thead>
               <tbody>
-                {items.map((item) => (
-                  <Tr key={item.id} className={cn(changed.has(item.id) && "animate-flash")}>
-                    <Td>
-                      <div className="flex items-center gap-3">
-                        <ItemPhoto item={item} onChanged={refresh} />
-                        <span className="min-w-0">
-                          <span className="flex items-center gap-1.5">
-                            <span className="code block text-[12.5px] font-semibold">{item.sku}</span>
-                            <LocationBadge location={item.location} />
+                {items.map((item) => {
+                  const actions: RowAction[] = [
+                    { label: "Stock Addition", icon: PackagePlus, run: () => setForm({ kind: "addition", item }) },
+                    { label: "Move to bad stock", icon: Ban, run: () => setForm({ kind: "adjustment", item, type: "Move to Bad Stock" }), danger: true },
+                    { label: "Stock Adjustment", icon: SlidersHorizontal, run: () => setForm({ kind: "adjustment", item }) },
+                    { label: "Edit", icon: Pencil, run: () => setEditing(item) },
+                    { label: "Delete", icon: Trash2, run: () => setDeleting(item), danger: true },
+                  ];
+                  return (
+                    <Tr key={item.id} className={cn(changed.has(item.id) && "animate-flash")}>
+                      <Td>
+                        <div className="flex items-center gap-3">
+                          <ItemPhoto item={item} onChanged={refresh} />
+                          <span className="min-w-0">
+                            <span className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                              <span className="code block text-[12.5px] font-semibold">{item.sku}</span>
+                              <LocationBadge location={item.location} />
+                            </span>
+                            <span className="block max-w-[140px] truncate text-[12.5px] sm:max-w-[280px]">{item.name}</span>
+                            <span className="block max-w-[140px] truncate text-[11px] text-fg-subtle sm:max-w-[280px]">
+                              {[item.subcategory ?? item.category, item.spec, item.dimensions].filter(Boolean).join(" · ")}
+                            </span>
                           </span>
-                          <span className="block max-w-[280px] truncate text-[12.5px]">{item.name}</span>
-                          <span className="block max-w-[280px] truncate text-[11px] text-fg-subtle">
-                            {[item.subcategory ?? item.category, item.spec, item.dimensions].filter(Boolean).join(" · ")}
-                          </span>
-                        </span>
-                      </div>
-                    </Td>
-                    <Td className="hidden text-[12.5px] text-fg-muted lg:table-cell">{item.unit}</Td>
-                    <Td align="right" className="tabular hidden text-[12.5px] text-fg-muted xl:table-cell">{qty(item.opening_qty)}</Td>
-                    <Td align="right" className="tabular hidden text-[12.5px] text-fg-muted xl:table-cell">{item.added ? qty(item.added) : "—"}</Td>
-                    <Td align="right" className="tabular hidden text-[12.5px] text-warn md:table-cell">{item.reserved ? qty(item.reserved) : "—"}</Td>
-                    <Td align="right" className="tabular hidden text-[12.5px] text-fg-muted xl:table-cell">{item.issued ? qty(item.issued) : "—"}</Td>
-                    <Td align="right" className="tabular hidden text-[12.5px] text-danger lg:table-cell">{item.bad_qty ? qty(item.bad_qty) : "—"}</Td>
-                    <Td align="right" className="tabular text-[13px]">{qty(item.quantity)}</Td>
-                    <Td align="right" className={cn("tabular text-[13.5px] font-semibold", item.available < 0 && "text-danger")}>{qty(item.available)}</Td>
-                    <Td align="center" className="hidden sm:table-cell"><ReorderBadge status={item.reorder_status} /></Td>
-                    <Td align="right">
-                      <div className="flex items-center justify-end gap-0.5">
-                        <IconButton label={`Stock Addition for ${item.sku}`} onClick={() => setForm({ kind: "addition", item })}><PackagePlus className="h-3.5 w-3.5" /></IconButton>
-                        <IconButton label={`Move ${item.sku} to bad stock`} onClick={() => setForm({ kind: "adjustment", item, type: "Move to Bad Stock" })} danger><Ban className="h-3.5 w-3.5" /></IconButton>
-                        <IconButton label={`Stock Adjustment for ${item.sku}`} onClick={() => setForm({ kind: "adjustment", item })}><SlidersHorizontal className="h-3.5 w-3.5" /></IconButton>
-                        <IconButton label={`Edit ${item.sku}`} onClick={() => setEditing(item)}><Pencil className="h-3.5 w-3.5" /></IconButton>
-                        <IconButton label={`Delete ${item.sku}`} onClick={() => setDeleting(item)} danger><Trash2 className="h-3.5 w-3.5" /></IconButton>
-                      </div>
-                    </Td>
-                  </Tr>
-                ))}
+                        </div>
+                      </Td>
+                      <Td className="hidden text-[12.5px] text-fg-muted lg:table-cell">{item.unit}</Td>
+                      <Td align="right" className="tabular hidden text-[12.5px] text-fg-muted xl:table-cell">{qty(item.opening_qty)}</Td>
+                      <Td align="right" className="tabular hidden text-[12.5px] text-fg-muted xl:table-cell">{item.added ? qty(item.added) : "—"}</Td>
+                      <Td align="right" className="tabular hidden text-[12.5px] text-warn md:table-cell">{item.reserved ? qty(item.reserved) : "—"}</Td>
+                      <Td align="right" className="tabular hidden text-[12.5px] text-fg-muted xl:table-cell">{item.issued ? qty(item.issued) : "—"}</Td>
+                      <Td align="right" className="tabular hidden text-[12.5px] text-danger lg:table-cell">{item.bad_qty ? qty(item.bad_qty) : "—"}</Td>
+                      <Td align="right" className="tabular hidden text-[13px] sm:table-cell">{qty(item.quantity)}</Td>
+                      <Td align="right" className={cn("tabular text-[13.5px] font-semibold", item.available < 0 && "text-danger")}>
+                        {qty(item.available)}
+                        <span className="block text-[10.5px] font-normal text-fg-subtle sm:hidden">of {qty(item.quantity)}</span>
+                      </Td>
+                      <Td align="center" className="hidden sm:table-cell"><ReorderBadge status={item.reorder_status} /></Td>
+                      <Td align="right">
+                        <>
+                          <div className="hidden items-center justify-end gap-0.5 sm:flex">
+                            {actions.map((a) => (
+                              <IconButton key={a.label} label={`${a.label} for ${item.sku}`} onClick={a.run} danger={a.danger}>
+                                <a.icon className="h-3.5 w-3.5" />
+                              </IconButton>
+                            ))}
+                          </div>
+                          <RowMenu label={`Actions for ${item.sku}`} actions={actions} />
+                        </>
+                      </Td>
+                    </Tr>
+                  );
+                })}
               </tbody>
             </TableWrap>
           )}
@@ -345,6 +361,59 @@ export function ManageView({ source }: { source: Source }) {
         </Modal>
       ) : null}
     </>
+  );
+}
+
+type RowAction = { label: string; icon: React.ComponentType<{ className?: string }>; run: () => void; danger?: boolean };
+
+/** On phones a row's actions sit behind one button, so the figures stay on screen. */
+function RowMenu({ label, actions }: { label: string; actions: RowAction[] }) {
+  const [open, setOpen] = React.useState(false);
+  const [up, setUp] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative sm:hidden">
+      <IconButton
+        label={label}
+        onClick={() => {
+          // The table scrolls inside its own box, which would clip a menu opening past its bottom.
+          const box = ref.current?.closest(".overflow-x-auto")?.getBoundingClientRect();
+          const row = ref.current?.getBoundingClientRect();
+          setUp(Boolean(box && row && box.bottom - row.bottom < 230 && row.top - box.top > 230));
+          setOpen((v) => !v);
+        }}
+      >
+        <Ellipsis className="h-4 w-4" />
+      </IconButton>
+      {open ? (
+        <div className={cn("absolute right-0 z-20 w-52 animate-fade-up", up ? "bottom-full mb-1" : "top-full mt-1", "overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-[var(--shadow)]")}>
+          {actions.map((a) => (
+            <button
+              key={a.label}
+              onClick={() => {
+                setOpen(false);
+                a.run();
+              }}
+              className={cn(
+                "flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-[13.5px] transition-colors",
+                a.danger ? "text-danger hover:bg-danger-soft" : "text-fg hover:bg-surface-2",
+              )}
+            >
+              <a.icon className="h-4 w-4" /> {a.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+    </div>
   );
 }
 

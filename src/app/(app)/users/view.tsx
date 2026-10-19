@@ -151,9 +151,9 @@ export function UsersView() {
             <thead>
               <tr>
                 <Th>Person</Th>
-                <Th>Role</Th>
+                <Th className="hidden sm:table-cell">Role</Th>
                 <Th align="right" className="hidden md:table-cell">Last seen</Th>
-                <Th align="center">Status</Th>
+                <Th align="center" className="hidden sm:table-cell">Status</Th>
                 <Th align="right">Actions</Th>
               </tr>
             </thead>
@@ -171,10 +171,15 @@ export function UsersView() {
                           {u.id === me.sub ? <Badge tone="accent">you</Badge> : null}
                         </span>
                         <span className="block truncate text-[11.5px] text-fg-subtle">{u.email}</span>
+                        <span className="mt-1 block text-[11.5px] text-fg-muted sm:hidden">
+                          {u.job_title ?? ROLE_LABELS[u.role]}
+                          {companyOf(u.role, u.company) ? <span className="text-fg-subtle"> · {SOURCE_LABELS[companyOf(u.role, u.company)!]}</span> : null}
+                          {u.is_active ? null : <span className="text-danger"> · disabled</span>}
+                        </span>
                       </span>
                     </div>
                   </Td>
-                  <Td>
+                  <Td className="hidden sm:table-cell">
                     <span className="block text-[13px]">{u.job_title ?? ROLE_LABELS[u.role]}</span>
                     <span className="block text-[11.5px] text-fg-subtle">
                       {[u.job_title ? ROLE_LABELS[u.role] : null, companyOf(u.role, u.company) ? SOURCE_LABELS[companyOf(u.role, u.company)!] : null]
@@ -184,11 +189,11 @@ export function UsersView() {
                   <Td align="right" className="hidden whitespace-nowrap text-[12px] text-fg-subtle md:table-cell">
                     {u.last_login_at ? relativeTime(u.last_login_at) : "never"}
                   </Td>
-                  <Td align="center">
+                  <Td align="center" className="hidden sm:table-cell">
                     {u.is_active ? <Badge tone="ok" dot>active</Badge> : <Badge tone="danger" dot>disabled</Badge>}
                   </Td>
                   <Td align="right">
-                    <div className="flex items-center justify-end gap-1">
+                    <div className="ml-auto flex w-[76px] flex-wrap items-center justify-end gap-1 sm:w-auto sm:flex-nowrap">
                       <button
                         onClick={() => {
                           setForm({
@@ -211,7 +216,7 @@ export function UsersView() {
                       {u.id !== me.sub ? (
                         <button
                           onClick={() => toggleActive(u)}
-                          className="rounded-lg px-2 py-1.5 text-[12px] font-medium text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
+                          className="order-last rounded-lg px-2 py-1.5 sm:order-none text-[12px] font-medium text-fg-subtle transition-colors hover:bg-surface-2 hover:text-fg"
                         >
                           {u.is_active ? "Disable" : "Enable"}
                         </button>

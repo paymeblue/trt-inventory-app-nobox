@@ -24,7 +24,7 @@ export function Th({
   return (
     <th
       className={cn(
-        "sticky top-0 z-10 border-b border-border bg-surface px-4 py-2.5",
+        "sticky top-0 z-10 border-b border-border bg-surface px-3 py-2.5 sm:px-4",
         "text-[11px] font-semibold uppercase tracking-wider text-fg-subtle",
         align === "right" && "text-right",
         align === "center" && "text-center",
@@ -47,7 +47,7 @@ export function Td({
   return (
     <td
       className={cn(
-        "border-b border-border px-4 py-3 align-middle text-fg",
+        "border-b border-border px-3 py-3 align-middle text-fg sm:px-4",
         align === "right" && "text-right",
         align === "center" && "text-center",
         className,
